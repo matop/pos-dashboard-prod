@@ -1,0 +1,20 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "C:\\Claude\\POS Dashboard - test VM\\POS Dashboard - Copy\\backend\\logs\\.14f34c26c6adfe38b695a77963c4f9c9f12ede4c-audit.json",
+    "files": [
+        {
+            "date": 1773864037085,
+            "name": "C:\\Claude\\POS Dashboard - test VM\\POS Dashboard - Copy\\backend\\logs\\error-2026-03-18.log",
+            "hash": "26ea172c4ac31f078739d8a38db55397811f22275d1ebd5efead14b1566983a1"
+        },
+        {
+            "date": 1773928211030,
+            "name": "C:\\Claude\\POS Dashboard - test VM\\POS Dashboard - Copy\\backend\\logs\\error-2026-03-19.log",
+            "hash": "74b35b94364b40eec221e59ce0f5dfd0a699a4b125cb00c66d7b22a88e289b6b"
+        }
+    ],
+    "hashType": "sha256"
+}

@@ -1,0 +1,264 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-page: #060b18;
+    --bg-card: linear-gradient(145deg,#0c1a35,#091428);
+    --bg-surface: #0d1730;
+    --bg-header: linear-gradient(180deg,rgba(10,20,50,.95),rgba(6,11,24,.95));
+    --bg-filterbar: rgba(6,11,24,.92);
+    --bg-tooltip: #0d1e3a;
+    --bg-dropdown: #0d1730;
+    --bg-input: rgba(96,165,250,.06);
+    --border-card: rgba(99,179,237,.10);
+    --border-card-hover: rgba(99,179,237,.22);
+    --border-filter: rgba(99,179,237,.08);
+    --border-input: rgba(96,165,250,.20);
+    --border-tooltip: rgba(59,130,246,.30);
+    --border-divider: rgba(99,179,237,.12);
+    --text-bright: #e2e8f0;
+    --text-mid: #94a3b8;
+    --text-muted: #475569;
+    --text-very-muted: #334155;
+    --text-label: #2d4a6a;
+    --chart-grid: rgba(255,255,255,.03);
+    --chart-axis: #2d4a6a;
+    --bar-track: rgba(255,255,255,.04);
+    --skeleton-from: #0d1e3a;
+    --skeleton-mid: #142847;
+    --accent-amber: #d97706;
+    --color-scheme: dark;
+  }
+
+  [data-theme="light"] {
+    --bg-page: #f0f4f8;
+    --bg-card: linear-gradient(145deg,#ffffff,#f7faff);
+    --bg-surface: #f7faff;
+    --bg-header: linear-gradient(180deg,rgba(247,250,255,.97),rgba(240,244,248,.97));
+    --bg-filterbar: rgba(240,244,248,.95);
+    --bg-tooltip: #ffffff;
+    --bg-dropdown: #ffffff;
+    --bg-input: rgba(59,130,246,.04);
+    --border-card: rgba(99,102,241,.12);
+    --border-card-hover: rgba(99,102,241,.28);
+    --border-filter: rgba(99,102,241,.10);
+    --border-input: rgba(59,130,246,.25);
+    --border-tooltip: rgba(59,130,246,.20);
+    --border-divider: rgba(99,102,241,.15);
+    --text-bright: #1a202c;
+    --text-mid: #4a5568;
+    --text-muted: #718096;
+    --text-very-muted: #a0aec0;
+    --text-label: #718096;
+    --chart-grid: rgba(0,0,0,.06);
+    --chart-axis: #718096;
+    --bar-track: rgba(0,0,0,.06);
+    --skeleton-from: #e2e8f0;
+    --skeleton-mid: #f0f4f8;
+    --accent-amber: #d97706;
+    --color-scheme: light;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-family: 'DM Sans', sans-serif; color-scheme: var(--color-scheme); }
+  body { margin: 0; background-color: var(--bg-page); color: var(--text-bright); -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg-surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border-input); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+}
+
+@layer utilities {
+  .font-display { font-family: 'Fraunces', Georgia, serif; }
+  .font-mono    { font-family: 'DM Mono', monospace; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(99,179,237,0.05) inset;
+    transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(99,179,237,0.2), transparent);
+  }
+  .card:hover {
+    border-color: var(--border-card-hover);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 1px 0 rgba(99,179,237,0.12) inset;
+    transform: translateY(-1px);
+  }
+
+  .kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 14px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.25s, transform 0.2s;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(99,179,237,0.25), transparent);
+  }
+  .kpi-card:hover { border-color: var(--border-card-hover); transform: translateY(-2px); }
+
+  .filter-pill {
+    display: inline-flex; align-items: center;
+    padding: 5px 13px; font-size: 12px; font-family: 'DM Sans', sans-serif;
+    font-weight: 500; border-radius: 8px;
+    border: 1px solid rgba(99,179,237,0.18); color: #7fa8cc;
+    background: rgba(99,179,237,0.04); cursor: pointer; transition: border-color 0.15s, color 0.15s, background-color 0.15s, box-shadow 0.15s; letter-spacing: 0.01em;
+  }
+  .filter-pill:hover { border-color: rgba(99,179,237,0.45); color: #93c5fd; background: rgba(99,179,237,0.1); }
+  .filter-pill.active { border-color: #3b82f6; color: #93c5fd; background: rgba(59,130,246,0.15); box-shadow: 0 0 12px rgba(59,130,246,0.2); }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--skeleton-from) 0%, var(--skeleton-mid) 50%, var(--skeleton-from) 100%);
+    background-size: 200% 100%;
+    border-radius: 6px;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up { animation: fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+  .animation-delay-100 { animation-delay: 80ms; }
+  .animation-delay-200 { animation-delay: 160ms; }
+  .animation-delay-300 { animation-delay: 240ms; }
+  .animation-delay-400 { animation-delay: 320ms; }
+  .animation-delay-500 { animation-delay: 400ms; }
+
+  .badge-up   { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.2); }
+  .badge-down { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(251,113,133,0.1);color:#fb7185;border:1px solid rgba(251,113,133,0.2); }
+  .badge-neutral { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(148,163,184,0.08);color:#64748b;border:1px solid rgba(148,163,184,0.15); }
+
+  .filter-bar-panel { overflow: hidden; transition: max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s ease; }
+  .filter-bar-panel.open   { max-height: 400px; opacity: 1; }
+  .filter-bar-panel.closed { max-height: 0; opacity: 0; }
+
+  .filter-chip-summary { overflow: hidden; transition: max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s ease; }
+  .filter-chip-summary.visible { max-height: 48px; opacity: 1; }
+  .filter-chip-summary.hidden  { max-height: 0; opacity: 0; }
+}
+
+/* ── react-datepicker ocean theme ─────────────────────────── */
+
+.datepicker-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  color: var(--text-mid);
+  outline: none;
+  width: 7.5rem;
+  touch-action: manipulation;
+}
+.datepicker-input:focus-visible {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.react-datepicker-popper { z-index: 20; }
+
+.react-datepicker {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 12px rgba(59,130,246,0.08);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  overflow: hidden;
+  position: relative;
+}
+.react-datepicker::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,179,237,0.2), transparent);
+}
+
+.react-datepicker__header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-divider);
+  padding-top: 10px;
+}
+.react-datepicker__current-month {
+  color: var(--text-bright);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+.react-datepicker__day-name {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  width: 2rem;
+  line-height: 2rem;
+  margin: 0.15rem;
+}
+
+.react-datepicker__day {
+  color: var(--text-mid);
+  width: 2rem;
+  line-height: 2rem;
+  margin: 0.15rem;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.react-datepicker__day:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--text-bright);
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background: #3b82f6 !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.react-datepicker__day--selected:hover {
+  background: #2563eb !important;
+}
+
+.react-datepicker__day--today {
+  font-weight: 700;
+  color: #60a5fa;
+}
+
+.react-datepicker__day--disabled {
+  color: var(--text-very-muted) !important;
+  cursor: not-allowed;
+}
+.react-datepicker__day--outside-month {
+  color: var(--text-very-muted);
+  opacity: 0.5;
+}
+
+.react-datepicker__navigation { top: 10px; }
+.react-datepicker__navigation-icon::before {
+  border-color: var(--text-muted);
+  border-width: 2px 2px 0 0;
+  height: 7px;
+  width: 7px;
+}
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  border-color: var(--text-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up { animation: none !important; opacity: 1; transform: none; }
+  .skeleton { animation: none !important; }
+  .card:hover, .kpi-card:hover { transform: none !important; }
+  .filter-bar-panel, .filter-chip-summary { transition: none !important; }
+  .react-datepicker__day { transition: none !important; }
+}
