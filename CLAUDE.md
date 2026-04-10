@@ -99,3 +99,42 @@ Browser URL (?empkey=X&ubicod=Y)
 - **No global state library** — React `useState` in Dashboard; `ThemeContext` for theme only
 - **empkey scoping** — every backend query filters by `empkey` (enterprise ID) for multi-tenant isolation
 - **TypeScript strict mode** — both backend and frontend; `noUnusedLocals` and `noUnusedParameters` enforced in frontend
+
+## Testing
+
+### Backend (`/backend`)
+```bash
+cd backend
+npm test           # vitest run (21 tests)
+npm run test:watch # vitest watch mode
+```
+
+- Tests use **Vitest + Supertest** — `src/routes/salesComparison.test.ts`, `src/utils/dateUtils.test.ts`
+- Setup in `src/test/setup.ts` — mocks `pool`, `logger`, and `cacheMiddleware`
+- `index.ts` exports `{ app }` and skips `listen()` when `NODE_ENV=test`
+- **ALWAYS run `/test` before delivering backend changes**
+
+## PostgreSQL Query Rules (CRITICAL)
+
+When writing `pool.query(sql, params)` in backend routes:
+
+1. **No orphan params** — every `params.push(x)` MUST have a corresponding `$N` in the SQL. PostgreSQL rejects unreferenced params.
+2. **No `ANY($N::type[])` with array params** — use `IN ($a, $b, $c)` with individual params instead. See node-postgres FAQ.
+3. **Conditional params** — if a param is only pushed conditionally (e.g., `currentHour` only when `needsHourFilter`), the SQL reference must also be conditional.
+4. **Run `/validate-query`** after modifying any route file.
+
+## Skills & Quality Workflow
+
+### Custom Commands (`.claude/commands/`)
+- `/test` — run backend tests before delivering code
+- `/validate-query` — check pg queries for orphan params, array casts, SQL injection
+- `/deploy-check` — full pre-deploy checklist (tests + tsc + lint + build)
+- `/update-doc` — update `ESTADO-DEPLOY-SESIONES-FUTURAS.md` with session changes
+- `/review-changes` — comprehensive review pipeline using all relevant skills
+- `/smart-delegate` — token optimizer; plan delegation before multi-step tasks (haiku→reads, sonnet→planning/design, opus→code/debug)
+
+### When to invoke installed skills
+- **`frontend-design`** — when creating or modifying UI components in `components/charts/` or `components/filters/`. This project uses an **ocean theme** with custom Tailwind palette, CSS custom properties for dark/light, Fraunces + DM Sans fonts.
+- **`web-design-guidelines`** — when modifying CSS in `index.css` or any component with user interaction. Check: `:focus-visible` (not `:focus`), `touch-action: manipulation`, `aria-label`, `prefers-reduced-motion`.
+- **`vercel-react-best-practices`** — when modifying Dashboard.tsx, chart components, or data fetching logic. Check: `useMemo`/`useCallback` usage, unnecessary re-renders, fetch waterfalls.
+- **`context7`** (MCP) — when using external libraries (pg, express, recharts, react-datepicker). ALWAYS verify API usage against current docs before implementing.
