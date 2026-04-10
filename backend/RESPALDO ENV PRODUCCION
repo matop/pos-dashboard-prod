@@ -1,0 +1,6 @@
+PORT=3001
+NODE_ENV=production
+DATABASE_URL=postgresql://postgres:postgres1267!@localhost:5432/pos
+#DATABASE_URL=postgresql://postgres:postgres1267@localhost:5432/pos
+FRONTEND_URL=https://pos16.qa.andespos.com
+API_SECRET_KEY=5ae939a89529c096128578c1048ed3ac1c07e6f8dd62e1f29395ad29ea9e36a6

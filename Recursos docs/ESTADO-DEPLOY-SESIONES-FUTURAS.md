@@ -1,6 +1,6 @@
 # POS Dashboard — Estado del Deploy y Contexto para Sesiones Futuras
-> Última actualización: 19 Marzo 2026
-> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils)
+> Última actualización: 10 Abril 2026
+> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7)
 
 ---
 
@@ -15,6 +15,7 @@
 | DB PostgreSQL | ✅ Conectada (DB: pos) | 10.50.10.5 localhost |
 | CORS | ✅ FRONTEND_URL=https://pos16.qa.andespos.com | backend .env |
 | API Key / 401 | ✅ Resuelto — Nginx externo pasa x-api-key | — |
+| API Key mismatch local↔QA | ✅ Resuelto — `VITE_API_SECRET_KEY` en `frontend/.env` debe coincidir con `API_SECRET_KEY` del backend QA | — |
 | App en QA | ✅ https://pos16.qa.andespos.com/POSdashboard2603/ | — |
 | SalesHistoryChart — tooltip | ✅ Corregido (dataKey="day", identificador único) | — |
 | SalesHistoryChart — eje X | ✅ Legible con tick rotado -30° | — |
@@ -39,7 +40,20 @@
 | Token Tomcat | ⏳ Pendiente definición senior | — |
 | Winston logging | ✅ logger.ts + daily rotate + 13 console calls migrados | — |
 | Leak DATABASE_URL en logs | ✅ Eliminado — db.ts ya no loguea credenciales | — |
-| Tests Vitest + Supertest | ⏳ — | — |
+| salesComparison — query consolidada | ✅ 5 queries → 1 con SUM(CASE WHEN) + IN clause | — |
+| Rate limiter 300 req/15min | ✅ Era 100, subido a 300 | backend index.ts |
+| Cache backend TTL 60s | ✅ `middleware/cache.ts` — charts endpoints | backend |
+| Tests Vitest + Supertest | ✅ 89 tests — salesComparison, dateUtils, salesHistory, topProducts, branches, products, validate, cache | backend |
+| Lint Recharts — `any` + `set-state-in-effect` | ✅ Corregido — `TooltipProps`/`AxisTickProps` + `useReducer` en SalesComparisonChart y TopProductsChart | frontend |
+| AbortController en fetches | ✅ P21 — 3 useEffects + client.ts signal + isAbortError utility | frontend |
+| Express app export para tests | ✅ `index.ts` exporta `{ app }`, no listen() en test | backend |
+| `fetchSalesComparison` — fallback defensivo | ✅ Retorna `{ data: json.data ?? [], currentHour: json.currentHour ?? 0 }` — consistente con resto de client.ts | frontend |
+| Docs — limpieza | ✅ Eliminados SESION-18MAR2026-DOCUMENTACION.md + Deploy POS Dashboard.zip. Historial técnico compactado (1071→757 líneas) | — |
+| Dark mode — contraste texto | ✅ `--text-label`/`--chart-axis` #2d4a6a→#718096 (ratio 1.5→5.0:1). `--text-muted` →#5a7a96, `--text-very-muted` →#516880. `DARK_COLORS.chartAxis` + `CustomizedAxisTick` usa `colors.chartAxis` | frontend |
+| Recharts 3 — tipos TypeScript | ✅ `TooltipProps` → interfaz local `TooltipContent`. `CustomizedAxisTick` → `(...args: any[])` con cast interno. `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts` del build | frontend/backend |
+| `frontend/.env.production` | ✅ Creado — Vite lo usa solo en `npm run build`. Separa key de prod de la key local en `.env` | frontend |
+| Manual Deploy Dashboard | ✅ Creado en `Recursos docs/Manual Deploy Dashboard.md` — guía paso a paso para deploy en servidor nuevo | docs |
+| pos-prod-sim — Pasos 1–7 | ⏳ Archivos transferidos, permisos OK, .env OK, npm install OK, PM2 online, Nginx config OK — falta: reload Nginx + túnel SSH DB + smoke tests + PM2 startup | 192.168.56.101 |
 
 ---
 
@@ -209,254 +223,78 @@ curl "http://localhost/POSdashboard2603/api/charts/sales-comparison?empkey=1136&
 
 ---
 
-## 1. Qué se implementó — historial técnico por sesión
+## Fix 404 después de deploy manual WinSCP
 
-### Sesión 16 Mar — Bugs Recharts
+**Síntoma:** Se subieron `backend/dist/` y/o `frontend/dist/` via WinSCP sin ejecutar `deploy.sh`. El browser muestra 404.
 
-#### `frontend/src/components/charts/SalesHistoryChart.tsx`
-- `dayKeyToLabel(key)` corregida para incluir año de 2 dígitos → `"DD/MM/AA"`
-- `XAxis` cambiado a `dataKey="day"` (número YYYYMMDD, único) en lugar de `"label"` (string colisionable)
-- `tickFormatter` y `CustomizedAxisTick` usan `dayKeyToLabel(payload.value)` para display
-- `CustomTooltip` aplica `dayKeyToLabel(label)` — recibe el número crudo, no el string
-- `chartData` simplificado: ya no agrega campo `label` redundante
-- `CustomizedAxisTick` definido fuera del componente, rota labels -30°, `margin bottom: 20`
+**Causa raíz:** pm2 y Nginx no se restartearon — siguen sirviendo el código viejo en memoria.
 
-#### `frontend/src/components/charts/TopProductsChart.tsx`
-- Eliminadas `getTopN()` y `getUmbralPorcentaje()` — no escalan con distribuciones de cola larga
-- Nuevas constantes: `COBERTURA_OBJETIVO = 0.80`, `MAX_SLICES = 8`
-- Algoritmo de cobertura acumulada: loop sobre `raw` ordenado desc, acumula hasta 80% del total o 8 slices
-- Resto → `"Otros (N productos)"` con `esOtros: true`
-- `Set<number>` para lookup O(1) de productos ya incluidos
+- **pm2** carga `backend/dist/index.js` en memoria al arrancar y no lo relee automáticamente al sobreescribirse el archivo.
+- **Nginx/browser**: Vite genera nombres con content hash (e.g. `assets/index-Ab1c.js`). El nuevo `index.html` referencia los nuevos hashes. Si Nginx o el browser devuelven el viejo `index.html`, los assets con hash nuevo no existen → 404.
 
----
+### Fix completo (SSH en 10.50.10.5)
 
-### Sesión 18 Mar — Deploy QA
+WinSCP sube archivos con el usuario SSH del operador, no con `dashboardapp`. Hay que corregir permisos antes de recargar servicios.
 
-#### `frontend/vite.config.ts`
-- Agregado `base: '/POSdashboard2603/'` — sin esto los assets se pedían desde `/` y daban 404 en subpath
+```bash
+# 1. Corregir dueño y permisos (ajustar según qué subiste)
+# Si subiste frontend/dist/:
+sudo chown -R dashboardapp:dashboardapp /var/www/pos-dashboard/frontend/dist/
+sudo find /var/www/pos-dashboard/frontend/dist/ -type d -exec chmod 755 {} \;
+sudo find /var/www/pos-dashboard/frontend/dist/ -type f -exec chmod 644 {} \;
 
-#### `/etc/nginx/sites-available/pos-dashboard` (10.50.10.5)
-- Instalado y configurado Nginx desde cero en servidor QA
-- 4 locations: API subpath, frontend subpath, API legacy, root legacy
-- `server_name` incluye dominio externo + IP + localhost
+# Si subiste backend/dist/:
+sudo chown -R dashboardapp:dashboardapp /var/www/pos-dashboard/backend/dist/
+sudo find /var/www/pos-dashboard/backend/dist/ -type d -exec chmod 755 {} \;
+sudo find /var/www/pos-dashboard/backend/dist/ -type f -exec chmod 644 {} \;
 
-#### Config Nginx externo (pos16.qa.andespos.com)
-- Dos locations nuevos en server block existente
-- `proxy_set_header x-api-key $http_x_api_key` — línea crítica que resolvió el 401
+# 2. Verificar estado pm2
+sudo -u dashboardapp HOME=/home/dashboardapp pm2 status
 
-#### `backend/.env` (servidor QA)
-- `FRONTEND_URL` corregido a `https://pos16.qa.andespos.com`
-- `rejectUnauthorized: false` en `db.ts` para certificado autofirmado de PostgreSQL QA
+# 3. Reiniciar backend si subiste backend/dist/ (toma el nuevo dist/ del disco)
+sudo -u dashboardapp HOME=/home/dashboardapp pm2 restart pos-backend
 
-#### `/var/www/pos-dashboard/deploy-servidor-nuevo.sh`
-- Script de deploy para servidor sin TypeScript — solo recibe `dist/` desde VM
-- Pasos: verifica dist/ y .env → permisos → `npm install --omit=dev` → PM2 start/restart → health check
+# 4. Recargar Nginx (descarta index.html cacheado)
+sudo nginx -t && sudo systemctl reload nginx
+```
 
----
+Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 
-### Sesión 18 Mar — Feature `refDate`
+### Procedimiento mínimo para cambios solo de frontend
 
-#### `backend/src/middleware/validate.ts`
-- Nueva función `parseRefDate(value, res): Date | null | 'invalid'`
-- Parsea query param `refDate` (string YYYYMMDD) → objeto `Date`
-- Retorna `null` si no viene, `'invalid'` + HTTP 400 si malformado
-- Mensaje de error hardcodeado — nunca refleja el `value` del usuario (prevención Reflected XSS)
+1. Build local: `cd frontend && npm run build`
+2. Subir solo `frontend/dist/` via WinSCP
+3. SSH:
+   ```bash
+   sudo chown -R dashboardapp:dashboardapp /var/www/pos-dashboard/frontend/dist/
+   sudo find /var/www/pos-dashboard/frontend/dist/ -type f -exec chmod 644 {} \;
+   sudo systemctl reload nginx
+   ```
+4. No es necesario tocar pm2 para cambios solo de frontend
 
-#### `backend/src/routes/salesComparison.ts`
-- Extrae `refDateRaw` del query (evita naming collision)
-- `refDateParsed`: resultado de `parseRefDate` con guard `if === 'invalid' return`
-- `now = refDateParsed ?? new Date()`: ancla los 5 períodos al corte
-- `realNow = new Date()`: capturado una sola vez por request
-- `isToday = (anchorDayKey) => anchorDayKey === toDayKey(realNow)`: compara contra día REAL del servidor, no contra `refDate`
-- `currentHour = realNow.getHours()`: hora real, no de `refDate` (que no tiene componente horario)
+### Por qué `deploy.sh` no tiene este problema
 
-#### `backend/src/routes/salesHistory.ts`
-- `effectiveTo`: jerarquía de 3 niveles:
-  1. `toDate` explícito en URI (máxima prioridad)
-  2. `toDayKey(refDateParsed)` si no vino `to`
-  3. `toDayKey(new Date())` — comportamiento original
-- `effectiveTo` **siempre se aplica** — ya no es opcional
-- `toDayKey` agregada localmente (pendiente mover a módulo compartido)
-
-#### `frontend/src/App.tsx`
-- `getUrlParams()` extrae también `refDate: params.get('refDate')`
-- `<Dashboard>` recibe `refDate={refDate}` como prop nueva
-
-#### `frontend/src/components/Dashboard.tsx`
-- `interface Props` agrega `refDate: string | null`
-- `getDefaultTimeRange(refDate)`: ancla el `to` en `refDate` si existe, sino `new Date()`
-- `useState<TimeRange>(() => getDefaultTimeRange(refDate))` — inicialización lazy
-- `refDate` propagado como prop a todos los charts y KPICards
-
-#### `frontend/src/api/client.ts`
-- `fetchSalesHistory`, `fetchTopProducts`, `fetchSalesComparison`: agregan `refDate?: string | null`
-- `buildParams` ya maneja `null` con `if (v == null) continue` — sin cambios adicionales
-
-#### `frontend/src/components/filters/TimeRangeFilter.tsx`
-- `getPreset(days, refDate)` y `getThisYear(refDate)`: anclan `to` en `refDate` si existe
-- `PRESETS` → `getPresets(refDate)`: función dinámica en lugar de array estático
-- `interface Props` agrega `refDate: string | null`
-- Atributo `max` en input `to`: bloquea fechas posteriores al corte
-- Validación en `onChange`: ignora cambio si `newTo > maxTo`
-
-#### `frontend/src/components/KPICards.tsx` y `SalesComparisonChart.tsx`
-- `interface Props` agrega `refDate: string | null`
-- `refDate` pasado al fetch correspondiente y al array de dependencias del `useEffect`
+`deploy.sh` hace automáticamente: build → `pm2 restart pos-backend` → `nginx reload`. Al bypassearlo con WinSCP, estos pasos deben hacerse manualmente.
 
 ---
 
-### Sesión 18 Mar — Pendientes críticos (P1, P2, P3)
+## 1. Historial de sesiones — resumen
 
-#### P3 → P2 doc: `refDate` en `useEffect` dependency arrays (fix)
-- **Problema:** `SalesHistoryChart` y `TopProductsChart` recibían `refDate` en Props y lo pasaban al fetch, pero no lo incluían en el array de dependencias del `useEffect`
-- **Archivos:** `SalesHistoryChart.tsx` (línea 68), `TopProductsChart.tsx` (línea 184)
-- **Fix:** Agregar `refDate` al array: `[empkey, ubicod, timeRange.from, timeRange.to, products, refDate]`
-- **Verificación:** `tsc --noEmit` limpio
-
-#### P3 → P2 doc: PM2 startup systemd para `dashboardapp`
-- **Problema 1:** Primer intento con `pm2 startup` generó servicio roto (`pm2---hp.service`) porque `-u` y `--hp` se parsearon sin username en el medio → `User=--hp`, `PM2_HOME=/root/.pm2`
-- **Fix:** Limpiar servicio roto + recrear con comando correcto:
-  ```bash
-  sudo systemctl disable pm2---hp && sudo rm /etc/systemd/system/pm2---hp.service && sudo systemctl daemon-reload
-  sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u dashboardapp --hp /home/dashboardapp
-  sudo -u dashboardapp HOME=/home/dashboardapp pm2 save
-  ```
-- **Resultado:** `pm2-dashboardapp.service` enabled + `dump.pm2` guardado en `/home/dashboardapp/.pm2/`
-- **Nota:** `Active: inactive (dead)` es normal — el servicio solo actúa en boot ejecutando `pm2 resurrect`
-
-#### P1 → P1 doc: `react-datepicker` con locale español y ocean theme
-
-##### `frontend/src/components/filters/TimeRangeFilter.tsx`
-- Eliminadas `keyToInputValue()` y `inputValueToKey()` — solo servían para `input[type="date"]`
-- Nueva función `keyToDate(key: number): Date` — convierte YYYYMMDD a objeto Date para el picker
-- `dateToKey()` reutilizada — convierte Date de vuelta a YYYYMMDD en `onChange`
-- `maxToDate` computado: `refDate ? keyToDate(parseInt(refDate)) : new Date()`
-- Dos `<input type="date">` reemplazados por dos `<DatePicker>` con:
-  - `dateFormat="dd/MM/yyyy"` — formato forzado independiente del locale del browser
-  - `locale="es"` — meses y días en español (registrado con `registerLocale`)
-  - `maxDate={maxToDate}` — respeta `refDate` como tope
-  - `aria-label` ("Fecha desde", "Fecha hasta") — accesibilidad
-  - `name` ("date-from", "date-to") — semántica de formulario
-  - `autoComplete="off"` — evita sugerencias de password manager
-  - `placeholderText="dd/mm/aaaa"` — UX cuando input vacío
-  - `showPopperArrow={false}` — prop nativo, sin hack CSS
-  - `popperPlacement="bottom-start"` — alineado al filtro
-- Presets, Props interface, `getPreset`, `getThisYear`, `getPresets` — sin cambios
-- Nuevas dependencias: `react-datepicker`, `date-fns`
-
-##### `frontend/src/index.css`
-- ~75 líneas de CSS para react-datepicker con ocean theme:
-  - `.datepicker-input` — usa `--bg-input`, `--border-input`, `--text-mid`, `touch-action: manipulation`
-  - `.datepicker-input:focus-visible` — ring azul solo con teclado (no al click)
-  - `.react-datepicker` — `--bg-surface`, `--border-card`, border-radius 12px, glow sutil `rgba(59,130,246,0.08)`
-  - `.react-datepicker::before` — gradient line top igual que `.card` y `.kpi-card`
-  - `.react-datepicker__day--selected` — `#3b82f6` (mismo accent que `.filter-pill.active`)
-  - `.react-datepicker__day--today` — `#60a5fa` (accent)
-  - `.react-datepicker__current-month` — `text-transform: capitalize` (date-fns es retorna lowercase)
-  - `@media (prefers-reduced-motion)` — `transition: none` en días del calendario
-- Plan revisado contra: Web Interface Guidelines (Vercel), context7 (react-datepicker docs), frontend-design skill
-
----
-
-### Sesión 19 Mar — Refactor /simplify (dedup, performance, shared utils)
-
-#### Shared utilities creadas
-
-##### `frontend/src/utils/format.ts`
-- `formatCLP(v)`: formateador corto con tiers B/M/K — versión unificada (incluye billones de KPICards)
-- `formatCLPFull(v)`: `Intl.NumberFormat` hoisted a module scope — evita reconstruir el formatter en cada call
-- Reemplaza 7 definiciones duplicadas en: SalesHistoryChart, SalesComparisonChart, TopProductsChart, KPICards
-
-##### `frontend/src/utils/dateKeys.ts`
-- `dateToKey(d)`: Date → YYYYMMDD integer (antes duplicada en TimeRangeFilter + Dashboard inline `fmt`)
-- `keyToDate(key)`: YYYYMMDD → Date con fallback defensivo (antes local en TimeRangeFilter)
-- `parseRefDateString(s)`: valida + parsea string YYYYMMDD → Date | null (reemplaza `isValidRefDate` en App.tsx y parsing inline en Dashboard, TimeRangeFilter)
-- `formatDayKey(key, format)`: formatea YYYYMMDD para display en 3 formatos ('short' DD/MM, 'medium' DD/MM/YY, 'long' DD/MM/YYYY) — reemplaza `dayKeyToLabel`, `dayLabel`, `fmtDate` en 3 archivos
-
-#### Duplicate `fetchSalesHistory` eliminado (impacto alto)
-- **Problema:** KPICards y SalesHistoryChart llamaban ambos `fetchSalesHistory` con params idénticos — doble request en cada cambio de filtro
-- **Fix:** Dashboard.tsx ahora owns el fetch con `useReducer` (evita lint warning `set-state-in-effect`)
-- KPICards recibe `{ data, loading }` como props — ya no fetch interno, KPIs computados con `useMemo([data])`
-- SalesHistoryChart recibe `{ data, loading, error }` como props — ya no fetch interno
-- **Impacto:** -50% requests a `/api/charts/sales-history`, más headroom para rate limiter (100 req/15min)
-
-#### Clock extraído (impacto medio)
-- **Problema:** `setNow(new Date())` cada 60s re-renderizaba todo Dashboard (header, filtros, charts)
-- **Fix:** Nuevo componente `<Clock />` dentro de Dashboard.tsx — owns su propio state + interval
-- Solo el display de hora/fecha se actualiza cada minuto, no el árbol completo
-
-#### ThemeContext optimizado
-- Provider value envuelto en `useMemo([theme, toggle])` + `toggle` en `useCallback`
-- Evita que todos los `useTheme()` consumers re-rendericen cuando ThemeProvider re-renderiza
-
-#### TopProductsChart — memoization + cleanup
-- Grouping "Otros" (reduce, loop, Set, filter) envuelto en `useMemo([raw])` — no se recalcula en re-renders unrelated
-- `getTopN()` function que retornaba constante → `const MAX_SLICES = 8`
-- Código comentado `getUmbralPorcentaje` eliminado
-
-#### Dashboard fixes
-- `useMemo(() => getDefaultTimeRange(refDate), [])` → dependency array corregido a `[refDate]`
-- `getDefaultTimeRange` refactored a usar `parseRefDateString` + `dateToKey` compartidos
-- `ActiveFilterChips.fmtDate` → `formatDayKey(key, 'short')`
-
-#### SalesHistoryChart cleanup
-- `chartData = data` alias redundante eliminado
-- Import de `dayKeyToLabel` → `formatDayKey` del módulo compartido
-
-#### SalesComparisonChart fix
-- Inline `todayKey` string construction → `dateToKey(new Date())`
-
-#### TimeRangeFilter refactor
-- Local `dateToKey`, `keyToDate` eliminados → importados de `utils/dateKeys`
-- Inline refDate parsing en `getPreset`/`getThisYear` → helper `refDateToDate` que usa `parseRefDateString`
-
-#### KPICards error handling
-- `.catch(() => setLoading(false))` que tragaba errores silenciosamente → `.catch(() => { setKpis([]); setLoading(false) })`
-
-#### Backend validate.ts
-- `parseRefDate` ahora delega validación a `parseDateParam` — elimina duplicación de lógica de validación YYYYMMDD
-
-#### App.css eliminado
-- Boilerplate de Vite (`.logo`, `.read-the-docs`, `.card` con `padding: 2em`, `logo-spin`) — no importado por ningún archivo, `.card` podía colisionar con `index.css`
-
-#### Lint pre-existentes (no introducidos)
-- 2x `@typescript-eslint/no-explicit-any` en props de Recharts (CustomTooltip, CustomizedAxisTick)
-- 2x `react-hooks/set-state-in-effect` en TopProductsChart y SalesComparisonChart — pendiente migrar a useReducer si se desea
-
----
-
-### Sesión 18 Mar — P4 badge hora + P5 dateUtils + Hardening validación
-
-#### P4: Badge "hasta X:00 hs" en `SalesComparisonChart.tsx`
-- Badge solo visible si `!refDate || refDate === todayKey` (día real del servidor)
-- `todayKey` calculado inline con `new Date()` — sin dependencia externa
-- Bonus fix: `refDate` faltaba en el dependency array del `useEffect` (mismo bug de P2)
-
-#### P5: `backend/src/utils/dateUtils.ts` — módulo compartido
-- `toDayKey(date: Date): number` extraída a `backend/src/utils/dateUtils.ts`
-- Eliminada la copia local en `salesComparison.ts` y `salesHistory.ts`
-- Imports actualizados: `import { toDayKey } from '../utils/dateUtils'`
-
-#### Hardening: validación contra inputs inválidos (3 capas)
-- **Capa 1 — Gate en `App.tsx`:** `isValidRefDate()` valida 8 dígitos + fecha calendario real (no 20001332). Si falla → `refDate = null`
-- **Capa 2 — `keyToDate()` defensiva en `TimeRangeFilter.tsx`:** valida `s.length === 8` + `isNaN(date.getTime())`. Fallback → `new Date()`
-- **Capa 3 — `ErrorBoundary.tsx` (nuevo):** React class component que captura errores de render. Muestra UI "Algo salió mal" + botón recargar, mismo estilo visual que pantalla de empkey faltante
-- Descubrimiento: validación backend `from > to` ya existía en `salesHistory.ts` líneas 53-57
-
-#### P8: Winston logging — `backend/src/logger.ts`
-- **Nuevo archivo:** `backend/src/logger.ts` — Winston con formato JSON estructurado
-- **Transports:**
-  - `error-YYYY-MM-DD.log` — solo nivel error, retención 30 días, max 10MB
-  - `combined-YYYY-MM-DD.log` — todos los niveles, retención 14 días, max 20MB
-  - Console con colores (solo en dev, no en producción)
-- **Dependencias:** `winston`, `winston-daily-rotate-file`
-- **13 console calls migrados en 6 archivos:**
-  - `index.ts` — startup info, CORS warn, error global
-  - `db.ts` — fatal config, pool error. **Eliminado `console.log(DATABASE_URL)` que leakeaba credenciales**
-  - `auth.ts` — API key missing
-  - `branches.ts`, `products.ts`, `salesHistory.ts`, `topProducts.ts`, `salesComparison.ts` — error de query con contexto (`empkey`)
-- **Logs en QA:** `/var/www/pos-dashboard/backend/logs/`
-- **Metadata estructurada:** cada error incluye `{ error, empkey }` para filtrado
+| Sesión | Área | Cambios principales |
+|--------|------|---------------------|
+| 10 Abr | Fix build + deploy pos-prod-sim | Fix Recharts 3 types: `TooltipContent` interfaz local, `CustomizedAxisTick` con `...args: any[]`, `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts`. `frontend/.env.production` con key de prod. Deploy a pos-prod-sim (192.168.56.101): WinSCP + permisos + .env + npm install + PM2 online + Nginx configurado. `Manual Deploy Dashboard.md` creado. |
+| 16 Mar | Frontend — Recharts | SalesHistoryChart: `dataKey="day"` (único), `tickFormatter` + `CustomizedAxisTick` -30°. TopProductsChart: cobertura acumulada `COBERTURA_OBJETIVO=0.80` / `MAX_SLICES=8` en lugar de topN fijo |
+| 18 Mar | Deploy QA | `vite.config.ts`: `base: '/POSdashboard2603/'` (crítico). Nginx interno 4 locations. Nginx externo: `proxy_set_header x-api-key` resolvió 401. `deploy-servidor-nuevo.sh`. `rejectUnauthorized: false` en db.ts (cert autofirmado QA) |
+| 18 Mar | Feature `refDate` | Backend: `parseRefDate` en validate.ts, `effectiveTo` en salesHistory, `now`/`realNow`/`isToday` en salesComparison. Frontend: App, Dashboard, client.ts, TimeRangeFilter (max), KPICards, SalesComparisonChart — todos reciben y propagan `refDate` |
+| 18 Mar | Pendientes críticos | `react-datepicker` con locale `es` + ocean theme CSS (~75 líneas index.css). pm2-dashboardapp.service enabled (bug startup: `-u dashboardapp` debe ir antes de `--hp`). `refDate` agregado a useEffect deps en SalesHistoryChart y TopProductsChart |
+| 18 Mar | P4 + P5 + P8 + Hardening | Badge hora oculto si refDate es pasado. `backend/src/utils/dateUtils.ts` con `toDayKey` compartida. Winston logger + daily rotate (13 console migrados, leak de DATABASE_URL eliminado). ErrorBoundary.tsx, `isValidRefDate`, `keyToDate` defensiva |
+| 19 Mar | Refactor /simplify | `utils/format.ts` (formatCLP, formatCLPFull). `utils/dateKeys.ts` (dateToKey, keyToDate, parseRefDateString, formatDayKey). Dashboard owns fetchSalesHistory con useReducer (-50% requests). `<Clock />` aislado. ThemeContext useMemo/useCallback. TopProductsChart useMemo. App.css eliminado |
+| 19 Mar | P20 + P23 + P10 | salesComparison: 5 queries → 1 (SUM CASE WHEN + IN). `middleware/cache.ts` TTL 60s. Rate limit 100→300. 21 tests Vitest+Supertest (salesComparison + dateUtils). Bugs resueltos: parámetro huérfano `$2`, `ANY($N::bigint[])` con pg |
+| 19 Mar | P21 AbortController | `client.ts`: `isAbortError()` + `AbortSignal` en 3 fetch functions. Dashboard, TopProductsChart, SalesComparisonChart: controller + cleanup `abort()` en cada useEffect. Verificado en DevTools: requests `(cancelled)` al cambiar filtros |
+| 08 Abr | Debug + fix | 401 → API key mismatch local↔QA (`VITE_API_SECRET_KEY` se bake en build time — verificar antes de cada build). `fetchSalesComparison` bug latente: sin fallback → `setData(undefined)` → TypeError. Fix defensivo aplicado (09 Abr) |
+| 09 Abr | Fix + limpieza docs | `fetchSalesComparison` en client.ts: `return { data: json.data ?? [], currentHour: json.currentHour ?? 0 }`. Eliminados SESION-18MAR2026-DOCUMENTACION.md y Deploy POS Dashboard.zip. Historial técnico compactado |
+| 09 Abr | P22 lint + P24 tests | P22: `any` en Recharts → `TooltipProps<number, number\|string>` (SalesHistoryChart, SalesComparisonChart) + `AxisTickProps` interface (SalesHistoryChart). `set-state-in-effect` → `useReducer` FETCH_START/SUCCESS/ERROR en TopProductsChart y SalesComparisonChart. P24: 21→89 tests — 6 nuevos archivos (branches, products, topProducts, salesHistory, validate, cache). `vi.importActual` para testear cache.ts real saltando mock global del setup. |
+| 09 Abr | Dark mode contrast fix | `index.css`: 4 variables dark mode corregidas (text-label, chart-axis, text-muted, text-very-muted). `ThemeContext.tsx`: `DARK_COLORS.chartAxis` #2d4a6a→#718096. `SalesHistoryChart.tsx`: `CustomizedAxisTick` ahora usa `colors.chartAxis` vía `useTheme()` en vez de `#6b7280` hardcodeado. Mejora WCAG: ratio 1.5:1→5.0:1 en labels KPI y ejes de gráficos. |
 
 ---
 
@@ -565,6 +403,12 @@ Previene el delay de 300ms por double-tap zoom en móviles. Recomendación de We
 ### Nunca loguear connection strings completos
 `console.log(DATABASE_URL)` expone usuario, contraseña, host y DB en los logs. Si los logs se comparten o se suben a un sistema de monitoreo, las credenciales quedan expuestas. Loguear solo el hecho de que la variable falta, no su contenido.
 
+### `VITE_*` se bake en el bundle en build time — no en runtime
+Las variables `VITE_API_SECRET_KEY` se resuelven durante `npm run build`, no al cargar la app en el browser. Si el backend de producción tiene una key distinta a la que había en `frontend/.env` al compilar, todos los requests llegarán con credencial incorrecta → 401. Verificar siempre que ambas keys coincidan **antes** del build del frontend.
+
+### `?.` no protege cuando el objeto raíz es `undefined`
+`data[0]?.total ?? 0` — si `data` es `undefined` (no `[]`), el acceso `data[0]` ya lanza `TypeError` antes de que `?.` pueda actuar. El optional chaining solo protege la cadena **después** del punto. Siempre usar fallbacks en fetch (`json.data ?? []`) para garantizar que el estado inicial de los componentes sea el tipo correcto, no `undefined`.
+
 ---
 
 ## 4. Bugs encontrados y cómo se resolvieron
@@ -638,6 +482,24 @@ Previene el delay de 300ms por double-tap zoom en móviles. Recomendación de We
 - **Causa:** Al implementar `refDate` en `SalesHistoryChart` y `TopProductsChart`, se agregó al fetch call pero se olvidó en el dependency array del `useEffect`
 - **Solución:** Agregar `refDate` al array: `[empkey, ubicod, timeRange.from, timeRange.to, products, refDate]`
 
+### API key mismatch → 401 en todos los endpoints (08 Abr)
+- **Síntoma:** Todos los `GET /api/*` retornaban 401 desde `pos16.qa.andespos.com`. App no mostraba datos.
+- **Causa:** `VITE_API_SECRET_KEY` en `frontend/.env` local (`e593c677...`) no coincidía con `API_SECRET_KEY` en el backend QA (`5ae939a8...`). Las variables `VITE_*` se bake en el bundle JS en build time — si la key cambia en el backend después del build, o si el frontend fue compilado con una key distinta, todos los requests llegan con credencial inválida.
+- **Solución:** Actualizar `frontend/.env` con la key del backend QA, rebuild frontend, redeploy dist/.
+- **Lección:** Antes de cada deploy, verificar que `VITE_API_SECRET_KEY` == `API_SECRET_KEY` del servidor destino.
+
+### `fetchSalesComparison` crasheaba con `TypeError: reading '0'` al recibir error HTTP (08 Abr)
+- **Síntoma:** Cascada del 401 anterior — `ErrorBoundary` activado con `TypeError: Cannot read properties of undefined (reading '0')`
+- **Causa:** `fetchSalesComparison` en `client.ts` retorna raw JSON sin fallback. Con 401, la respuesta es `{ error: 'No autorizado' }` (sin key `data`). `setData(undefined)` sobreescribe el estado inicial `[]`. Luego `data[0]?.total` → `undefined[0]` → TypeError. El `?.` protege el acceso al `.total` del elemento, no cuando `data` en sí es `undefined`.
+- **Solución aplicada:** Fix de configuración (key mismatch). **Fix defensivo aplicado (09 Abr):** `fetchSalesComparison` retorna `{ data: json.data ?? [], currentHour: json.currentHour ?? 0 }` — consistente con el resto de funciones en `client.ts`.
+- **Diferencia con otros fetchers:** `fetchBranches` → `data.branches ?? []`, `fetchTopProducts` → `data.data ?? []`. Solo `fetchSalesComparison` no tenía fallback.
+
+### Dark mode ilegible — labels KPI y ejes de gráficos (09 Abr)
+- **Síntoma:** QA feedback: "letras poco legibles en modo oscuro". Labels KPI ("Total del período", "Promedio diario"), etiquetas de ejes X/Y de los 3 charts y subtextos de KPICards prácticamente invisibles.
+- **Causa:** `--text-label` y `--chart-axis` tenían valor `#2d4a6a` — ratio de contraste 1.5:1 contra fondo `#060b18` (WCAG mínimo es 4.5:1). Adicionalmente, `CustomizedAxisTick` en `SalesHistoryChart` tenía `fill="#6b7280"` hardcodeado sin responder al tema.
+- **Solución:** 3 archivos modificados: (1) `index.css` — 4 variables dark mode corregidas; (2) `ThemeContext.tsx` — `DARK_COLORS.chartAxis` #2d4a6a→#718096; (3) `SalesHistoryChart.tsx` — `CustomizedAxisTick` usa `useTheme()` y `colors.chartAxis`.
+- **Valores antes/después:** `--text-label`: #2d4a6a (1.5:1) → #718096 (5.0:1) · `--chart-axis`: ídem · `--text-muted`: #475569 (4.1:1) → #5a7a96 (4.5:1) · `--text-very-muted`: #334155 (2.8:1) → #516880 (3.5:1 — decorativo).
+
 ### PM2 startup generó servicio con `User=--hp`
 - **Síntoma:** `systemctl list-units | grep pm2` no retornaba nada, servicio nombrado `pm2---hp.service`
 - **Causa:** Comando `pm2 startup systemd -u --hp /home/dashboardapp` — el flag `-u` tomó `--hp` como valor en vez del username
@@ -690,19 +552,66 @@ Actualizar `FRONTEND_URL` en `.env`. Aplicar con `pm2 restart --update-env`.
 
 **P9 — Token Tomcat** — coordinar formato con dev senior · implementar en `auth.ts`
 
-### 🟢 Baja prioridad
+### ✅ Resueltos en sesión 19 Mar (performance + infra)
 
-**P10 — Tests de integración** — Vitest + Supertest para los 5 endpoints
+- ~~**P20 — Consolidar 5 queries de salesComparison en 1**~~ → 1 query con `SUM(CASE WHEN ...)` + `WHERE IN`. Pool de 5 conexiones a 1. Bug de parámetro huérfano encontrado y resuelto. NO usar `ANY($N::bigint[])` con pg — usar `IN ($a, $b, $c)` con params individuales.
+- ~~**P23 — Rate limiter + Cache backend**~~ → Rate limit 100 → 300 req/15min. Cache en memoria (`middleware/cache.ts`) con TTL 60s para 3 endpoints de charts. Solo cachea 2xx.
+- ~~**P10 — Tests Vitest + Supertest**~~ → 21 tests (18 salesComparison + 3 dateUtils). Cubre auth, validación, response format, caso crítico refDate pasado, parameterización SQL sin huecos, error handling. `npm test` en backend.
+
+### ✅ Resueltos en sesión 19 Mar (UX / race conditions)
+
+- ~~**P21 — AbortController en fetches**~~ → `client.ts` acepta `AbortSignal` en los 3 fetch functions + utilitaria `isAbortError()`. Dashboard, TopProductsChart y SalesComparisonChart crean `AbortController` en cada `useEffect`, pasan signal al fetch, y abortan en cleanup. Verificado en DevTools: requests `(cancelled)` al cambiar filtros rápido — solo la última ronda completa.
+
+### ✅ Resueltos en sesión 09 Abr (lint + tests)
+
+- ~~**P22 — Lint pre-existentes**~~ → `any` en Recharts props: `CustomizedAxisTick` → `AxisTickProps` (interface inline `{ x, y, payload }`), `CustomTooltip` → `TooltipProps<number, number>` (SalesHistoryChart) y `TooltipProps<number, string>` (SalesComparisonChart). `set-state-in-effect` en TopProductsChart y SalesComparisonChart → `useReducer` con acciones FETCH_START / FETCH_SUCCESS / FETCH_ERROR. `tsc --noEmit` sin errores.
+- ~~**P24 — Ampliar cobertura de tests**~~ → 21 → 89 tests. Nuevos archivos: `branches.test.ts` (8), `products.test.ts` (7), `topProducts.test.ts` (13), `salesHistory.test.ts` (15), `validate.test.ts` (20), `cache.test.ts` (5). `vi.importActual` para testear implementación real de cache.ts saltando el mock global del setup.
+
+### ✅ Resueltos en sesión 10 Abr (fix build + inicio deploy prod-sim)
+
+- ~~**Fix build Recharts 3**~~ → `TooltipProps<N,N>` ya no es válido para custom tooltips en Recharts 3 (omite `active/payload/label`). Solución: interfaz local `TooltipContent` + `content={<CustomTooltip />}`. `CustomizedAxisTick` → `(...args: any[])` con cast interno — patrón oficial de docs Recharts. `tsconfig.json` backend excluye `src/**/*.test.ts` y `src/test/**/*` del build de producción.
+- ~~**`frontend/.env.production`**~~ → Creado para separar key de prod de key local. Vite usa `.env.production` solo en `npm run build`, `.env` en dev. Elimina el riesgo de buildear con key incorrecta.
+- ~~**Manual Deploy Dashboard.md**~~ → Guía completa paso a paso en `Recursos docs/`. Cubre: build local, WinSCP, permisos, .env, npm install, túnel SSH, PM2, Nginx, startup systemd, smoke tests, redeploy, trampas conocidas.
+
+### ⏳ Pendiente — pos-prod-sim (192.168.56.101)
+
+**P25 — Completar deploy pos-prod-sim** — continuar en próxima sesión desde Paso 8:
+1. `sudo systemctl reload nginx` (config ya validada con `nginx -t`)
+2. Túnel SSH a DB de QA (10.50.10.5:5432) — autossh o service systemd
+3. Smoke tests: `curl` local + desde 192.168.56.99
+4. PM2 startup systemd (con orden correcto de args)
+5. Verificar reboot
+
+### 🟢 Baja prioridad
 
 **P11 — Evaluar `COBERTURA_OBJETIVO`** — actualmente 80% en TopProductsChart · validar con el negocio
 
-**P20 — Consolidar 5 queries de salesComparison en 1** — actualmente `Promise.all` con 5 queries al mismo table (1 por anchor day). Podría ser 1 query con `WHERE (dwphorakey/100) = ANY($N::int[])` + `GROUP BY`. Reduce 5 conexiones de pool a 1 por request.
+---
 
-**P21 — AbortController en fetches** — ningún `useEffect` usa `AbortController`. Cambios rápidos de filtro pueden causar race conditions (respuesta vieja llega después de la nueva). Aplica a Dashboard (salesHistory), TopProductsChart, SalesComparisonChart.
+---
 
-**P22 — Lint pre-existentes** — 2x `any` en Recharts props (CustomTooltip, CustomizedAxisTick), 2x `set-state-in-effect` en TopProductsChart y SalesComparisonChart. Migrar a `useReducer` como se hizo en Dashboard.
+## Lecciones aprendidas — Recharts 3 (TypeScript)
 
-**P23 — Rate limiter demasiado restrictivo** — 100 req/15min. Page load = ~5 calls, cada filtro = ~3 calls. Usuario activo puede agotar en ~4 min. Considerar subir a 300-500 o implementar caching.
+**`TooltipProps` en Recharts 3 omite `active`, `payload` y `label`**
+En v3, `TooltipProps<TValue, TName>` hace `Omit<..., 'active' | 'payload' | 'label' | ...>` — esas props son "leídas del contexto" y no están en el tipo. Usar una interfaz local simple: `interface TooltipContent { active?: boolean; payload?: Array<{ value: number }>; label?: string }`. No importar `TooltipProps` ni `TooltipContentProps` para componentes custom.
+
+**`CustomizedAxisTick` — patrón oficial con `...args`**
+Recharts inyecta las props (`x`, `y`, `payload`) en runtime. TypeScript no lo sabe al escribir `<CustomizedAxisTick />` (ve `{}`). Patrón oficial de docs: `(...args: any[]) => { const { x, y, payload } = args[0] as { x: number; y: number; payload: { value: number } }; }`. El `any` está acotado al boundary con Recharts; el interior del componente queda tipado.
+
+**`content={<CustomTooltip />}` es el patrón correcto**
+No usar render functions (`content={(props) => <CustomTooltip {...props} />}`) — TypeScript falla por contravarianza de genéricos. El JSX element directo funciona cuando el componente tiene una interfaz local simple (no importada de Recharts).
+
+**SIEMPRE consultar context7 antes de iterar con tipos de librerías externas**
+Recharts 3 cambió sus tipos significativamente respecto a v2. Sin consultar docs, se itera a ciegas. Regla: primer error de tipos de librería externa → abrir context7, no razonar desde memoria.
+
+**`tsconfig.json` backend debe excluir archivos de test**
+`"exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test/**/*"]` — sin esto, `tsc` compila los tests en el build de producción y falla si usan features como `top-level await` incompatibles con el `module: commonjs` de producción.
+
+**`frontend/.env.production` separa keys por entorno**
+Vite carga `.env.production` solo en `npm run build`, `.env` en dev. Crear `.env.production` con la key del servidor destino evita el riesgo de buildear con key incorrecta y tener 401 en producción.
+
+**`npm install --omit=dev` requiere `package.json` en el servidor**
+Transferir solo `dist/` no es suficiente. El servidor necesita `package.json` (y `package-lock.json` para builds deterministas) para que `npm install` sepa qué instalar. Agregar ambos archivos al procedimiento de WinSCP.
 
 ---
 
@@ -753,6 +662,74 @@ A diferencia de `<input>`, el componente no expone `spellCheck`. Detectado por T
 
 ---
 
+## Lecciones aprendidas — Frontend (AbortController)
+
+**AbortController en `useEffect` — patrón estándar para fetch cancelable**
+Crear `new AbortController()` al inicio del efecto, pasar `controller.signal` al `fetch()`, y llamar `controller.abort()` en la cleanup function. Cuando React re-ejecuta el efecto (cambio de deps), la cleanup aborta el fetch pendiente antes de lanzar uno nuevo.
+
+**`isAbortError` como guard en `.catch()`**
+`fetch()` lanza `DOMException` con `name === 'AbortError'` cuando se aborta. Sin el guard, el `.catch` trataría la cancelación intencional como un error real y mostraría mensaje de error al usuario. El patrón correcto: `.catch(e => { if (!isAbortError(e)) handleError(e) })`.
+
+**Requests `(cancelled)` en DevTools son señal de éxito, no de error**
+Chrome muestra `(cancelled)` con `0 kB` para fetches abortados. Esto confirma que AbortController está funcionando — el browser cortó la conexión antes de recibir respuesta completa. Solo la última request (la vigente) completa con datos.
+
+---
+
+## Lecciones aprendidas — Frontend (TypeScript + Recharts)
+
+**`TooltipProps<ValueType, NameType>` para custom tooltips de Recharts**
+Recharts exporta `TooltipProps<TValue, TName>` (importar con `import type { TooltipProps } from 'recharts'`). Elimina el `any` en el prop `content` de `<Tooltip>`. Usar `TooltipProps<number, number>` cuando label es un dayKey numérico, `TooltipProps<number, string>` cuando es texto (e.g. "Hoy", "Ayer").
+
+**Interface inline para tick components de XAxis**
+Recharts no exporta un tipo público para los props del tick custom. Solución: interface local `{ x: number; y: number; payload: { value: T } }`. Más simple y portable que intentar importar tipos internos de recharts.
+
+**`useReducer` en lugar de múltiples `useState` en `useEffect`**
+Cuando un `useEffect` llama 3+ setters distintos (`setLoading`, `setData`, `setError`), cada setter dispara un re-render separado. `useReducer` con `dispatch` atómico es más correcto: definir acciones FETCH_START / FETCH_SUCCESS / FETCH_ERROR → una sola actualización por fase. Además elimina el lint warning `set-state-in-effect`. Patrón ya establecido en Dashboard.tsx — replicar en cualquier chart que tenga su propio fetch.
+
+---
+
+## Lecciones aprendidas — Tests (Vitest)
+
+**`vi.importActual` para testear módulos mockeados en `setupFiles`**
+Si `setupFiles` mockea un módulo globalmente (e.g. `cache.ts`), todos los tests solo ven el mock. Para testear la implementación real del módulo: `const { cacheMiddleware } = await vi.importActual<typeof import('./cache')>('./cache')`. Llamar en `beforeAll`. Esencial para tests unitarios de middlewares que el resto del suite necesita desactivados.
+
+**Patrón helper `mockRes()` para tests de middlewares Express**
+Para testear funciones que reciben `(req, res, next)` sin Supertest: crear mocks mínimos con `vi.fn()`. El `res.status` debe retornar `res` para permitir `res.status(400).json(...)`. Pattern: `res.status = vi.fn().mockReturnValue(res); res.json = vi.fn().mockReturnValue(res);`. Verificar que `next` no fue llamado cuando se espera un 4xx.
+
+---
+
+## Lecciones aprendidas — Backend (PostgreSQL + node-postgres)
+
+**PostgreSQL rechaza parámetros no referenciados en el SQL**
+Si un `$N` está en el array de `params` pero no aparece en la query, PostgreSQL retorna "no se pudo determinar el tipo del parámetro $N". Solución: solo pushear params que se van a usar. En salesComparison, `currentHour` solo se pushea si `needsHourFilter === true`.
+
+**node-postgres: preferir `IN ($1, $2)` sobre `ANY($1::type[])`**
+La FAQ de node-postgres muestra dos formas de manejar arrays. `= ANY($1)` con array anidado requiere que pg serialice el array como string literal, y el cast explícito `::bigint[]` puede fallar. `IN ($1, $2, $3)` con params planos es más seguro y explícito. Verificado contra context7.
+
+**Siempre correr tests antes de entregar código**
+El bug del parámetro huérfano solo se manifestaba con `refDate` pasado (no hoy). Sin tests automatizados, pasó a producción local. Con el test `pool.query recibe parámetros sin huecos`, el bug se detecta inmediatamente.
+
+**Cache middleware con `res.json` override es transparente**
+Override de `res.json` en Express 5 funciona correctamente (verificado con context7). Solo cachear 2xx, nunca errores. Limpieza periódica del Map previene memory leak. Desactivar con mock passthrough en tests.
+
+---
+
+## Lecciones aprendidas — Frontend (Dark Mode y contraste)
+
+**`--text-label` y `--chart-axis` dark mode deben ser ≥5:1 contra #060b18**
+Los colores "de relleno" del dark mode de Tailwind (slate-700 #334155, slate-600 #475569) tienen ratio de contraste de 2–3:1 contra el fondo dark `#060b18`. No son legibles como texto. Para labels y ejes, usar #718096 (slate-500, ratio 5.0:1) como mínimo.
+
+**Colores hardcodeados en subcomponentes rompen el theming**
+`CustomizedAxisTick` con `fill="#6b7280"` hardcodeado ignora ThemeContext — en dark mode queda con un azul grisáceo del light mode, en light mode también estático. Siempre usar `const { colors } = useTheme()` dentro del componente y referenciar `colors.chartAxis`. Aplica a cualquier subcomponente que renderice texto de ejes o labels con Recharts.
+
+**Light mode y dark mode deben definirse en dos lugares separados**
+Los valores de colores Recharts viven en `ThemeContext.tsx` (`DARK_COLORS`/`LIGHT_COLORS`) **y** en `index.css` (`:root` dark / `[data-theme="light"]`). Un cambio de contraste requiere actualizar ambos archivos para que CSS variables y ThemeContext queden sincronizados.
+
+**Diagnóstico rápido de contraste WCAG**
+Ratios objetivo: texto normal ≥4.5:1 (AA), texto grande ≥3:1 (AA), decorativo ≥3:1 (trade-off aceptable). Calcular con: `(L1 + 0.05) / (L2 + 0.05)` donde `L1` = luminancia mayor. Para fondo `#060b18` (L≈0.002), cualquier color con L≥0.11 alcanza 4.5:1. El blue-gray del ocean theme #718096 tiene L≈0.19 → ratio 5.0:1 ✅.
+
+---
+
 ## Formato de datos — Base de Datos
 
 ```
@@ -788,6 +765,8 @@ SalesComparison — hourCondition:
 | Crash frontend / pantalla blanca | `frontend/src/components/ErrorBoundary.tsx` + `frontend/src/App.tsx` |
 | Nginx no sirve | `cat /etc/nginx/sites-enabled/pos-dashboard` |
 | PM2 no levanta | `tail /var/www/pos-dashboard/backend/logs/error-*.log` o `pm2 logs pos-backend` |
+| Tests / nuevo endpoint | `backend/src/test/setup.ts` + cualquier `*.test.ts` en `src/routes/` o `src/middleware/` |
+| Cache backend | `backend/src/middleware/cache.ts` + `backend/src/index.ts` (líneas 56-58) |
 
 ### Lo que NO debe asumir Claude
 
@@ -814,6 +793,16 @@ SalesComparison — hourCondition:
 - `ErrorBoundary.tsx` envuelve `<Dashboard>` — errores de render muestran UI de fallback, no pantalla blanca
 - Logging backend usa Winston (`backend/src/logger.ts`) — no `console.log`. Logs en `backend/logs/`
 - `db.ts` ya NO loguea `DATABASE_URL` — eliminado por riesgo de exposición de credenciales
+- **salesComparison usa 1 query consolidada** con `SUM(CASE WHEN ...)` + `WHERE IN` — NO `Promise.all` con 5 queries
+- **`needsHourFilter`** controla si `currentHour` se pushea a params — NUNCA pushear params que no se referencian en el SQL
+- **NO usar `ANY($N::bigint[])` con pg** — usar `IN ($a, $b, $c)` con params individuales (verificado con context7/node-postgres FAQ)
+- **Cache middleware** en `backend/src/middleware/cache.ts` — TTL 60s, solo 2xx, key = `req.originalUrl`
+- **Rate limiter** ahora 300 req/15min (era 100)
+- **Tests:** `cd backend && npm test` — 89 tests, 8 archivos, pool mockeado, cache desactivado en tests
+- **`index.ts` exporta `{ app }`** y no llama `listen()` en `NODE_ENV=test` — requisito de Supertest
+- **AbortController en los 3 fetches de charts** — `client.ts` acepta `AbortSignal`, cada `useEffect` crea controller + cleanup `abort()`. `isAbortError()` en `client.ts` distingue cancelaciones de errores reales. Requests `(cancelled)` en DevTools = comportamiento esperado.
+- **`useReducer` en SalesComparisonChart y TopProductsChart** — ya NO usan `useState` individual para loading/data/error. Usan `useReducer` con acciones FETCH_START/SUCCESS/ERROR. Al agregar fetches nuevos, seguir este patrón.
+- **`TooltipProps` de Recharts** — importar con `import type { TooltipProps } from 'recharts'`. `TooltipProps<number, number>` para SalesHistoryChart (label = dayKey numérico), `TooltipProps<number, string>` para SalesComparisonChart (label = texto). No usar `any`.
 
 ### Metodología del equipo
 - Developer aprende haciendo → concepto + pista antes de solución completa
