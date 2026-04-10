@@ -1,6 +1,6 @@
 # POS Dashboard — Estado del Deploy y Contexto para Sesiones Futuras
 > Última actualización: 10 Abril 2026
-> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7)
+> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7) · 10 Abr (P25: pos-prod-sim backend online con túnel PuTTY Windows→DB + commit historial completo) · 10 Abr (P25 completo: smoke tests + PM2 startup systemd + reboot verificado)
 
 ---
 
@@ -53,7 +53,7 @@
 | Recharts 3 — tipos TypeScript | ✅ `TooltipProps` → interfaz local `TooltipContent`. `CustomizedAxisTick` → `(...args: any[])` con cast interno. `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts` del build | frontend/backend |
 | `frontend/.env.production` | ✅ Creado — Vite lo usa solo en `npm run build`. Separa key de prod de la key local en `.env` | frontend |
 | Manual Deploy Dashboard | ✅ Creado en `Recursos docs/Manual Deploy Dashboard.md` — guía paso a paso para deploy en servidor nuevo | docs |
-| pos-prod-sim — Pasos 1–7 | ⏳ Archivos transferidos, permisos OK, .env OK, npm install OK, PM2 online, Nginx config OK — falta: reload Nginx + túnel SSH DB + smoke tests + PM2 startup | 192.168.56.101 |
+| pos-prod-sim (192.168.56.101) | ✅ Online + startup systemd | PM2 online, reboot verificado, túnel PuTTY activo |
 
 ---
 
@@ -282,6 +282,7 @@ Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 
 | Sesión | Área | Cambios principales |
 |--------|------|---------------------|
+| 10 Abr | P25 completo — pos-prod-sim | Smoke tests OK (frontend 200, API con datos reales). PM2 startup systemd configurado (`pm2-dashboardapp.service` enabled). `pm2 save` ejecutado. Reboot verificado: pos-backend online automáticamente. Bug descubierto: PM2 sin `--cwd` crashea con "DATABASE_URL no configurada" porque usa home dir como CWD. Fix: `pm2 start ... --cwd /var/www/pos-dashboard/backend`. |
 | 10 Abr | Fix build + deploy pos-prod-sim | Fix Recharts 3 types: `TooltipContent` interfaz local, `CustomizedAxisTick` con `...args: any[]`, `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts`. `frontend/.env.production` con key de prod. Deploy a pos-prod-sim (192.168.56.101): WinSCP + permisos + .env + npm install + PM2 online + Nginx configurado. `Manual Deploy Dashboard.md` creado. |
 | 16 Mar | Frontend — Recharts | SalesHistoryChart: `dataKey="day"` (único), `tickFormatter` + `CustomizedAxisTick` -30°. TopProductsChart: cobertura acumulada `COBERTURA_OBJETIVO=0.80` / `MAX_SLICES=8` en lugar de topN fijo |
 | 18 Mar | Deploy QA | `vite.config.ts`: `base: '/POSdashboard2603/'` (crítico). Nginx interno 4 locations. Nginx externo: `proxy_set_header x-api-key` resolvió 401. `deploy-servidor-nuevo.sh`. `rejectUnauthorized: false` en db.ts (cert autofirmado QA) |
@@ -505,6 +506,11 @@ Las variables `VITE_API_SECRET_KEY` se resuelven durante `npm run build`, no al 
 - **Causa:** Comando `pm2 startup systemd -u --hp /home/dashboardapp` — el flag `-u` tomó `--hp` como valor en vez del username
 - **Solución:** Limpiar servicio roto (`systemctl disable` + `rm` + `daemon-reload`), recrear con `-u dashboardapp --hp /home/dashboardapp`
 
+### PM2 crashea con "DATABASE_URL no configurada" en pos-prod-sim (10 Abr)
+- **Síntoma:** `pm2 start dist/index.js --name pos-backend` → status `errored`, 15+ reinicios, logs: `FATAL: DATABASE_URL no está configurada`
+- **Causa:** Sin `--cwd`, PM2 usa `/home/dashboardapp/` como working directory. `dotenv.config()` busca `.env` en el CWD, no en el directorio del script. El `.env` está en `/var/www/pos-dashboard/backend/.env`.
+- **Solución:** `pm2 start /var/www/pos-dashboard/backend/dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`
+
 ---
 
 ## 5. Pendientes para próximas sesiones
@@ -573,14 +579,20 @@ Actualizar `FRONTEND_URL` en `.env`. Aplicar con `pm2 restart --update-env`.
 - ~~**`frontend/.env.production`**~~ → Creado para separar key de prod de key local. Vite usa `.env.production` solo en `npm run build`, `.env` en dev. Elimina el riesgo de buildear con key incorrecta.
 - ~~**Manual Deploy Dashboard.md**~~ → Guía completa paso a paso en `Recursos docs/`. Cubre: build local, WinSCP, permisos, .env, npm install, túnel SSH, PM2, Nginx, startup systemd, smoke tests, redeploy, trampas conocidas.
 
-### ⏳ Pendiente — pos-prod-sim (192.168.56.101)
+### ✅ Resuelto en sesión 10 Abr (P25 — pos-prod-sim backend online)
 
-**P25 — Completar deploy pos-prod-sim** — continuar en próxima sesión desde Paso 8:
-1. `sudo systemctl reload nginx` (config ya validada con `nginx -t`)
-2. Túnel SSH a DB de QA (10.50.10.5:5432) — autossh o service systemd
-3. Smoke tests: `curl` local + desde 192.168.56.99
-4. PM2 startup systemd (con orden correcto de args)
-5. Verificar reboot
+- ~~**Nginx reload**~~ → `sudo systemctl reload nginx` ejecutado OK.
+- ~~**Túnel DB**~~ → pos-prod-sim (192.168.56.101) y QA (10.50.10.5) están en redes completamente aisladas (ping 100% loss). Solución: PuTTY en Windows como relay — tunnel `0.0.0.0:5433 → localhost:5432` hacia 10.50.10.5. Firewall Windows: regla `VirtualBox DB Tunnel` TCP 5433 desde 192.168.56.0/24. `.env` apunta a `192.168.56.1:5433`. Ver FAQ para detalle y comandos de diagnóstico.
+- ~~**API respondiendo**~~ → `curl /api/branches?empkey=1136` devuelve datos reales.
+
+### ✅ Resuelto en sesión 10 Abr (P25 completo — pos-prod-sim)
+
+~~**P25 restante**~~ — completado:
+1. ~~Smoke tests~~ → ✅ Frontend 200 OK, API con datos reales vía Nginx
+2. ~~PM2 startup systemd~~ → ✅ `pm2-dashboardapp.service` enabled, `pm2 save` ejecutado
+3. ~~Verificar reboot~~ → ✅ Reboot de VM exitoso, pos-backend online automáticamente (con PuTTY activo en Windows)
+
+**Nota:** PM2 debe arrancarse con `--cwd /var/www/pos-dashboard/backend` — sin esto falla con "DATABASE_URL no configurada".
 
 ### 🟢 Baja prioridad
 
@@ -803,6 +815,9 @@ SalesComparison — hourCondition:
 - **AbortController en los 3 fetches de charts** — `client.ts` acepta `AbortSignal`, cada `useEffect` crea controller + cleanup `abort()`. `isAbortError()` en `client.ts` distingue cancelaciones de errores reales. Requests `(cancelled)` en DevTools = comportamiento esperado.
 - **`useReducer` en SalesComparisonChart y TopProductsChart** — ya NO usan `useState` individual para loading/data/error. Usan `useReducer` con acciones FETCH_START/SUCCESS/ERROR. Al agregar fetches nuevos, seguir este patrón.
 - **`TooltipProps` de Recharts** — importar con `import type { TooltipProps } from 'recharts'`. `TooltipProps<number, number>` para SalesHistoryChart (label = dayKey numérico), `TooltipProps<number, string>` para SalesComparisonChart (label = texto). No usar `any`.
+- **PM2 `--cwd` es obligatorio en pos-prod-sim** — `pm2 start dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`. Sin `--cwd`, PM2 usa el home del usuario como working directory y dotenv no encuentra el `.env` → crash con "DATABASE_URL no configurada"
+- **PM2 startup en pos-prod-sim**: usar `pm2 startup systemd -u dashboardapp --hp /home/dashboardapp` directamente como root (sin `sudo env` wrapper — sudo no está instalado en esta VM)
+- **pos-prod-sim reboot**: el backend sobrevive reboot de VM siempre que PuTTY en Windows esté activo. Si PuTTY se cierra, PM2 arranca pos-backend pero falla al conectar a la DB silenciosamente.
 
 ### Metodología del equipo
 - Developer aprende haciendo → concepto + pista antes de solución completa

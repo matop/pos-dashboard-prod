@@ -26,15 +26,32 @@ After running automated checks, report status for each:
 | Frontend lint | ✅/⚠️/❌ | Warnings count |
 | Frontend build | ✅/❌ | Bundle size |
 
-## Reminder for QA Deploy
+## Reminder for Deploy
 
-After all checks pass, remind the user:
-```
-# En servidor QA (10.50.10.5):
+After all checks pass, remind the user to pick the target environment:
+
+### QA (10.50.10.5) — vía deploy.sh o rsync
+```bash
 bash /var/www/pos-dashboard/deploy-servidor-nuevo.sh
-
-# O si se buildea en el servidor:
-cd /var/www/pos-dashboard/frontend && npm install && npm run build
+# O manual:
 sudo -u dashboardapp HOME=/home/dashboardapp pm2 restart pos-backend --update-env
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+### pos-prod-sim (192.168.56.101) — vía WinSCP + terminal VM
+```bash
+# 1. Verificar que PuTTY tunnel sigue activo en Windows:
+#    netstat -an | findstr "5433"  → debe mostrar 0.0.0.0:5433 LISTENING
+
+# 2. En la VM (como dashboardapp):
+pm2 restart pos-backend --update-env
+# Si es primer deploy:
+pm2 start /var/www/pos-dashboard/backend/dist/index.js \
+  --name pos-backend \
+  --cwd /var/www/pos-dashboard/backend   # ⚠️ --cwd OBLIGATORIO
+
+# 3. Nginx:
+nginx -t && systemctl reload nginx
+```
+
+> ⚠️ Verificar siempre que `VITE_API_SECRET_KEY` del build coincide con `API_SECRET_KEY` del servidor destino.
