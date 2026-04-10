@@ -58,30 +58,32 @@ router.get('/', validateEmpkey, async (req: Request, res: Response) => {
     ? 'AND ' + extraConditions.join(' AND ')
     : '';
 
+  let sql = '';
   try {
     const todayDayKey = toDayKey(realNow);
-    const dayKeys = anchors.map(a => a.dayKey);
+    const needsHourFilter = anchors.some(a => a.dayKey === todayDayKey);
     const params = [...baseParams];
 
-    // Array de dayKeys para pre-filtro WHERE ANY
-    params.push(dayKeys);
-    const dayKeysIdx = params.length;
+    // Solo pushear currentHour si algún anchor es "hoy" real
+    let hourIdx: number | null = null;
+    if (needsHourFilter) {
+      params.push(currentHour);
+      hourIdx = params.length;
+    }
 
-    // currentHour para hour filter del anchor "hoy"
-    params.push(currentHour);
-    const hourIdx = params.length;
-
-    // CASE expression por cada anchor
+    // CASE expression por cada anchor + índices para IN clause
     const cases: string[] = [];
     const aliases: string[] = [];
+    const dayKeyIndices: number[] = [];
 
     anchors.forEach((anchor, i) => {
       params.push(anchor.dayKey);
       const dkIdx = params.length;
+      dayKeyIndices.push(dkIdx);
       const alias = `total_${i}`;
       aliases.push(alias);
 
-      if (anchor.dayKey === todayDayKey) {
+      if (anchor.dayKey === todayDayKey && hourIdx !== null) {
         cases.push(
           `COALESCE(SUM(CASE WHEN (r.dwphorakey/100)=$${dkIdx} AND (r.dwphorakey%100)<=$${hourIdx} THEN r.dwptotalmonto END),0) AS ${alias}`
         );
@@ -92,12 +94,14 @@ router.get('/', validateEmpkey, async (req: Request, res: Response) => {
       }
     });
 
-    const sql = `
+    const inClause = dayKeyIndices.map(i => `$${i}`).join(', ');
+
+    sql = `
       SELECT ${cases.join(', ')}
       FROM dwpreporte r
       WHERE r.dwpempkey = $1
         ${extraWhere}
-        AND (r.dwphorakey/100) = ANY($${dayKeysIdx}::bigint[])
+        AND (r.dwphorakey/100) IN (${inClause})
     `;
 
     const result = await pool.query(sql, params);
@@ -110,7 +114,7 @@ router.get('/', validateEmpkey, async (req: Request, res: Response) => {
 
     res.json({ data, currentHour });
   } catch (e: any) {
-    logger.error('Error en consulta salesComparison', { error: e.message, empkey });
+    logger.error('Error en consulta salesComparison', { error: e.message, empkey, sql });
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });

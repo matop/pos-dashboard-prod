@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip,
   ResponsiveContainer,
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
-import { fetchTopProducts } from '../../api/client';
+import { fetchTopProducts, isAbortError } from '../../api/client';
 import type { TopProductPoint } from '../../api/client';
 import type { TimeRange } from '../filters/TimeRangeFilter';
 import { formatCLP } from '../../utils/format';
@@ -156,18 +156,35 @@ function LabelPorcion(props: PieLabelRenderProps) {
     </g>
   );
 }
+// ─── Reducer ─────────────────────────────────────────────────────────────────
+interface FetchState { raw: TopProductPoint[]; loading: boolean; error: string | null }
+type FetchAction =
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; payload: TopProductPoint[] }
+  | { type: 'FETCH_ERROR'; payload: string };
+
+function fetchReducer(state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'FETCH_START':   return { ...state, loading: true, error: null };
+    case 'FETCH_SUCCESS': return { raw: action.payload, loading: false, error: null };
+    case 'FETCH_ERROR':   return { ...state, loading: false, error: action.payload };
+  }
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function TopProductsChart({ empkey, ubicod, timeRange, products, refDate }: Props) {
-  const [raw,     setRaw]     = useState<TopProductPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [state, dispatch] = useReducer(fetchReducer, { raw: [], loading: true, error: null });
+  const { raw, loading, error } = state;
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetchTopProducts({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products,refDate })
-      .then(d  => { setRaw(d); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
+    const controller = new AbortController();
+    dispatch({ type: 'FETCH_START' });
+    fetchTopProducts({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal: controller.signal })
+      .then(d  => dispatch({ type: 'FETCH_SUCCESS', payload: d }))
+      .catch(e => {
+        if (!isAbortError(e)) dispatch({ type: 'FETCH_ERROR', payload: e.message });
+      });
+    return () => controller.abort();
   }, [empkey, ubicod, timeRange.from, timeRange.to, products, refDate]);
 
   // ── Agrupación "Otros" (memoized) ─────────────────────────────────────────

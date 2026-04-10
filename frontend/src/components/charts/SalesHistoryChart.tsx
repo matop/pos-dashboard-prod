@@ -4,7 +4,10 @@ import { useTheme } from '../../context/ThemeContext';
 import { formatCLP, formatCLPFull } from '../../utils/format';
 import { formatDayKey } from '../../utils/dateKeys';
 
-const CustomizedAxisTick = ({ x, y, payload }: any) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CustomizedAxisTick = (...args: any[]) => {
+  const { x, y, payload } = args[0] as { x: number; y: number; payload: { value: number } };
+  const { colors } = useTheme();
   return (
     <g transform={`translate(${x},${y})`}>
       <text
@@ -12,7 +15,7 @@ const CustomizedAxisTick = ({ x, y, payload }: any) => {
         y={0}
         dy={12}
         textAnchor="end"
-        fill="#6b7280"
+        fill={colors.chartAxis}
         transform="rotate(-30)"
         style={{ fontSize: 10, fontFamily: 'DM Mono, monospace' }}
       >
@@ -28,7 +31,8 @@ interface Props {
   error: string | null;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipContent { active?: boolean; payload?: Array<{ value: number }>; label?: number }
+const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
   const { colors } = useTheme();
   if (!active || !payload?.length) return null;
   return (
@@ -37,7 +41,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       border: `1px solid ${colors.tooltipBorder}`,
       boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
     }}>
-      <p className="font-mono mb-1.5" style={{ color: 'var(--text-muted)' }}>{formatDayKey(label)} </p>
+      <p className="font-mono mb-1.5" style={{ color: 'var(--text-muted)' }}>{label != null ? formatDayKey(Number(label)) : ''} </p>
       <p className="font-mono font-semibold text-sm" style={{ color: '#60a5fa' }}>
         {formatCLPFull(payload[0].value)}
       </p>

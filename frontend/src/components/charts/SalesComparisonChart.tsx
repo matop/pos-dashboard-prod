@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { fetchSalesComparison } from '../../api/client';
+import { fetchSalesComparison, isAbortError } from '../../api/client';
 import type { SalesComparisonPoint } from '../../api/client';
 import { useTheme } from '../../context/ThemeContext';
 import { formatCLP, formatCLPFull } from '../../utils/format';
@@ -10,7 +10,23 @@ const BAR_COLORS = ['#3b82f6', 'rgba(96,165,250,0.65)', 'rgba(96,165,250,0.4)', 
 
 interface Props { empkey: string; ubicod: string | null; products: number[] | null; refDate: string | null }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+// ─── Reducer ─────────────────────────────────────────────────────────────────
+interface State { data: SalesComparisonPoint[]; currentHour: number; loading: boolean; error: string | null }
+type Action =
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; payload: { data: SalesComparisonPoint[]; currentHour: number } }
+  | { type: 'FETCH_ERROR'; payload: string };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'FETCH_START':   return { ...state, loading: true, error: null };
+    case 'FETCH_SUCCESS': return { data: action.payload.data, currentHour: action.payload.currentHour, loading: false, error: null };
+    case 'FETCH_ERROR':   return { ...state, loading: false, error: action.payload };
+  }
+}
+
+interface TooltipContent { active?: boolean; payload?: Array<{ value: number }>; label?: string }
+const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
   const { colors } = useTheme();
   if (!active || !payload?.length) return null;
   return (
@@ -29,16 +45,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function SalesComparisonChart({ empkey, ubicod, products,refDate }: Props) {
   const { colors } = useTheme();
-  const [data, setData] = useState<SalesComparisonPoint[]>([]);
-  const [currentHour, setCurrentHour] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(reducer, { data: [], currentHour: 0, loading: true, error: null });
+  const { data, currentHour, loading, error } = state;
 
   useEffect(() => {
-    setLoading(true); setError(null);
-    fetchSalesComparison({ empkey, ubicod, products,refDate })
-      .then(res => { setData(res.data); setCurrentHour(res.currentHour); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
+    const controller = new AbortController();
+    dispatch({ type: 'FETCH_START' });
+    fetchSalesComparison({ empkey, ubicod, products, refDate, signal: controller.signal })
+      .then(res => dispatch({ type: 'FETCH_SUCCESS', payload: res }))
+      .catch(e => {
+        if (!isAbortError(e)) dispatch({ type: 'FETCH_ERROR', payload: e.message });
+      });
+    return () => controller.abort();
   }, [empkey, ubicod, products, refDate]);
 
   const todayTotal = data[0]?.total ?? 0;

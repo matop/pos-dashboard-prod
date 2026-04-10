@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 
 import logger from './logger';
 import { authMiddleware } from './middleware/auth';
+import { cacheMiddleware } from './middleware/cache';
 import branchesRouter from './routes/branches';
 import productsRouter from './routes/products';
 import salesHistoryRouter from './routes/salesHistory';
@@ -36,7 +37,7 @@ app.use(cors({
 // ─── 3. SEGURIDAD: Rate Limiting ─────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,  // ventana de 15 minutos
-  max: 100,                   // máximo 100 requests por IP por ventana
+  max: 300,                   // máximo 300 requests por IP por ventana
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes, por favor intente más tarde' },
@@ -52,9 +53,9 @@ app.use('/api/', authMiddleware);
 // ─── 6. RUTAS ────────────────────────────────────────────────────────────────
 app.use('/api/branches', branchesRouter);
 app.use('/api/products', productsRouter);
-app.use('/api/charts/sales-history', salesHistoryRouter);
-app.use('/api/charts/top-products', topProductsRouter);
-app.use('/api/charts/sales-comparison', salesComparisonRouter);
+app.use('/api/charts/sales-history', cacheMiddleware(), salesHistoryRouter);
+app.use('/api/charts/top-products', cacheMiddleware(), topProductsRouter);
+app.use('/api/charts/sales-comparison', cacheMiddleware(), salesComparisonRouter);
 
 // ─── 7. RUTA NO ENCONTRADA ───────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -67,7 +68,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// ─── 9. INICIO ───────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  logger.info(`Backend corriendo en http://localhost:${PORT}`, { env: process.env.NODE_ENV || 'development' });
-});
+// ─── 9. EXPORT PARA TESTS ─────────────────────────────────────────────────────
+export { app };
+
+// ─── 10. INICIO ──────────────────────────────────────────────────────────────
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    logger.info(`Backend corriendo en http://localhost:${PORT}`, { env: process.env.NODE_ENV || 'development' });
+  });
+}

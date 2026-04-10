@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useReducer } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { fetchSalesHistory } from '../api/client';
+import { fetchSalesHistory, isAbortError } from '../api/client';
 import type { SalesHistoryPoint } from '../api/client';
 
 interface SalesState {
@@ -82,10 +82,14 @@ export default function Dashboard({ empkey, initialUbicod, refDate }: Props) {
   const [sales, dispatchSales] = useReducer(salesReducer, { data: [], loading: true, error: null });
 
   useEffect(() => {
+    const controller = new AbortController();
     dispatchSales({ type: 'fetch' });
-    fetchSalesHistory({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate })
+    fetchSalesHistory({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal: controller.signal })
       .then(d => dispatchSales({ type: 'success', data: d }))
-      .catch(e => dispatchSales({ type: 'failure', error: e.message }));
+      .catch(e => {
+        if (!isAbortError(e)) dispatchSales({ type: 'failure', error: e.message });
+      });
+    return () => controller.abort();
   }, [empkey, ubicod, timeRange.from, timeRange.to, products, refDate, refreshKey]);
 
   const defaultRange = useMemo(() => getDefaultTimeRange(refDate), [refDate]);
@@ -146,7 +150,6 @@ export default function Dashboard({ empkey, initialUbicod, refDate }: Props) {
                 Dashboard de Ventas
               </h1>
               <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-very-muted)' }}>
-                Enternet POS
               </p>
             </div>
           </div>

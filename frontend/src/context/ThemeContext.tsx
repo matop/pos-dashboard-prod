@@ -16,7 +16,7 @@ export interface ThemeColors {
 }
 
 const DARK_COLORS: ThemeColors = {
-  chartAxis: '#2d4a6a',
+  chartAxis: '#718096',
   chartGrid: 'rgba(255,255,255,0.03)',
   chartAxisSize: 11,
   tooltipBg: '#0d1e3a',

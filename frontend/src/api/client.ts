@@ -4,6 +4,10 @@ export interface SalesHistoryPoint { day: number; total: number; }
 export interface TopProductPoint { productokey: number; descripcion: string; total: number; }
 export interface SalesComparisonPoint { label: string; total: number; }
 
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
 // Lee la API Key desde las variables de entorno de Vite
 const API_KEY = import.meta.env.VITE_API_SECRET_KEY as string;
 
@@ -12,11 +16,12 @@ if (!API_KEY) {
 }
 
 // Todos los fetches usan este helper — agrega el header automáticamente
-async function apiFetch(path: string): Promise<Response> {
+async function apiFetch(path: string, signal?: AbortSignal): Promise<Response> {
   return fetch(path, {
     headers: {
       'x-api-key': API_KEY,
     },
+    signal,
   });
 }
 
@@ -51,11 +56,12 @@ export async function fetchSalesHistory(params: {
   from?: number;
   to?: number;
   products?: number[] | null;
-  refDate?: string | null; // ← nuevo
-
+  refDate?: string | null;
+  signal?: AbortSignal;
 }): Promise<SalesHistoryPoint[]> {
-  const qs = buildParams({ ...params, products: params.products ?? undefined });
-  const res = await apiFetch(`/api/charts/sales-history?${qs}`);
+  const { signal, ...rest } = params;
+  const qs = buildParams({ ...rest, products: rest.products ?? undefined });
+  const res = await apiFetch(`/api/charts/sales-history?${qs}`, signal);
   const data = await res.json();
   return data.data ?? [];
 }
@@ -66,11 +72,12 @@ export async function fetchTopProducts(params: {
   from?: number;
   to?: number;
   products?: number[] | null;
-  refDate?: string | null; // ← nuevo
-
+  refDate?: string | null;
+  signal?: AbortSignal;
 }): Promise<TopProductPoint[]> {
-  const qs = buildParams({ ...params, products: params.products ?? undefined });
-  const res = await apiFetch(`/api/charts/top-products?${qs}`);
+  const { signal, ...rest } = params;
+  const qs = buildParams({ ...rest, products: rest.products ?? undefined });
+  const res = await apiFetch(`/api/charts/top-products?${qs}`, signal);
   const data = await res.json();
   return data.data ?? [];
 }
@@ -79,9 +86,12 @@ export async function fetchSalesComparison(params: {
   empkey: string;
   ubicod?: string | null;
   products?: number[] | null;
-  refDate?: string | null; // ← nuevo
-
+  refDate?: string | null;
+  signal?: AbortSignal;
 }): Promise<{ data: SalesComparisonPoint[]; currentHour: number }> {
-  const qs = buildParams({ ...params, products: params.products ?? undefined });
-  return (await apiFetch(`/api/charts/sales-comparison?${qs}`)).json();
+  const { signal, ...rest } = params;
+  const qs = buildParams({ ...rest, products: rest.products ?? undefined });
+  const res = await apiFetch(`/api/charts/sales-comparison?${qs}`, signal);
+  const json = await res.json();
+  return { data: json.data ?? [], currentHour: json.currentHour ?? 0 };
 }

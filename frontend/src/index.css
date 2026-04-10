@@ -20,11 +20,11 @@
     --border-divider: rgba(99,179,237,.12);
     --text-bright: #e2e8f0;
     --text-mid: #94a3b8;
-    --text-muted: #475569;
-    --text-very-muted: #334155;
-    --text-label: #2d4a6a;
+    --text-muted: #5a7a96;
+    --text-very-muted: #516880;
+    --text-label: #718096;
     --chart-grid: rgba(255,255,255,.03);
-    --chart-axis: #2d4a6a;
+    --chart-axis: #718096;
     --bar-track: rgba(255,255,255,.04);
     --skeleton-from: #0d1e3a;
     --skeleton-mid: #142847;
