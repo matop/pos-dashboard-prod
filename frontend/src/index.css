@@ -21,7 +21,7 @@
     --text-bright: #e2e8f0;
     --text-mid: #94a3b8;
     --text-muted: #5a7a96;
-    --text-very-muted: #516880;
+    --text-very-muted: #6e8fa8;
     --text-label: #718096;
     --chart-grid: rgba(255,255,255,.03);
     --chart-axis: #718096;
@@ -143,7 +143,7 @@
 
   .badge-up   { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.2); }
   .badge-down { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(251,113,133,0.1);color:#fb7185;border:1px solid rgba(251,113,133,0.2); }
-  .badge-neutral { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(148,163,184,0.08);color:#64748b;border:1px solid rgba(148,163,184,0.15); }
+  .badge-neutral { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(148,163,184,0.08);color:#8399b0;border:1px solid rgba(148,163,184,0.15); }
 
   .filter-bar-panel { overflow: hidden; transition: max-height .3s cubic-bezier(.4,0,.2,1), opacity .25s ease; }
   .filter-bar-panel.open   { max-height: 400px; opacity: 1; }
@@ -200,7 +200,7 @@
 }
 
 .react-datepicker__day-name {
-  color: var(--text-muted);
+  color: var(--text-mid);
   font-size: 0.7rem;
   width: 2rem;
   line-height: 2rem;

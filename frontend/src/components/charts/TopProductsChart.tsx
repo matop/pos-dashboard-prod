@@ -146,7 +146,7 @@ function LabelPorcion(props: PieLabelRenderProps) {
       />
       <text
         x={xTexto} y={y2}
-        fill={segmentColor}
+        fill={segmentColor === '#4b5563' ? '#94a3b8' : segmentColor}
         textAnchor={anchorTexto}
         dominantBaseline="central"
         style={{ fontSize: 10, fontWeight: 600, fontFamily: 'DM Mono, monospace' }}
@@ -320,7 +320,7 @@ export default function TopProductsChart({ empkey, ubicod, timeRange, products, 
                     <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
                       {pct}%
                     </span>
-                    <span className="text-xs font-mono font-semibold" style={{ color }}>
+                    <span className="text-xs font-mono font-semibold" style={{ color: entry.esOtros ? 'var(--text-muted)' : color }}>
                       {formatCLP(entry.total)}
                     </span>
                   </div>

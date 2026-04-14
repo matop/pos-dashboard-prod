@@ -35,7 +35,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
       border: `1px solid ${colors.tooltipBorder}`,
       boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
     }}>
-      <p className="font-mono mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+      <p className="font-mono mb-1" style={{ color: 'var(--text-mid)' }}>{label}</p>
       <p className="font-mono font-semibold text-sm" style={{ color: '#60a5fa' }}>
         {formatCLPFull(payload[0].value)}
       </p>
@@ -173,7 +173,7 @@ export default function SalesComparisonChart({ empkey, ubicod, products,refDate 
                     }}
                   />
                 </div>
-                <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--text-muted)', minWidth: 68, textAlign: 'right' }}>
+                <span className="text-xs font-mono flex-shrink-0" style={{ color: 'var(--text-mid)', minWidth: 68, textAlign: 'right' }}>
                   {formatCLP(d.total)}
                 </span>
                 <div className="flex-shrink-0">

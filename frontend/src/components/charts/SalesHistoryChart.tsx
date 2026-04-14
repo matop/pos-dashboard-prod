@@ -41,7 +41,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
       border: `1px solid ${colors.tooltipBorder}`,
       boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
     }}>
-      <p className="font-mono mb-1.5" style={{ color: 'var(--text-muted)' }}>{label != null ? formatDayKey(Number(label)) : ''} </p>
+      <p className="font-mono mb-1.5" style={{ color: 'var(--text-mid)' }}>{label != null ? formatDayKey(Number(label)) : ''} </p>
       <p className="font-mono font-semibold text-sm" style={{ color: '#60a5fa' }}>
         {formatCLPFull(payload[0].value)}
       </p>
