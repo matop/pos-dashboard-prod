@@ -1,59 +1,24 @@
 # POS Dashboard — Estado del Deploy y Contexto para Sesiones Futuras
-> Última actualización: 10 Abril 2026
-> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7) · 10 Abr (P25: pos-prod-sim backend online con túnel PuTTY Windows→DB + commit historial completo) · 10 Abr (P25 completo: smoke tests + PM2 startup systemd + reboot verificado)
+> Última actualización: 14 Abril 2026
+> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7) · 10 Abr (P25: pos-prod-sim backend online con túnel PuTTY Windows→DB + commit historial completo) · 10 Abr (P25 completo: smoke tests + PM2 startup systemd + reboot verificado) · 14 Abr (auditoría WCAG AA dark mode — 7 fixes contraste + playbook producción)
 
 ---
 
 ## Estado actual del proyecto
 
-| Componente | Estado | Servidor |
-|-----------|--------|----------|
-| Backend Express :3001 | ✅ Online (PM2) | 10.50.10.5 |
-| Frontend React dist/ | ✅ Servido por Nginx interno | 10.50.10.5 |
-| Nginx interno | ✅ Configurado y activo | 10.50.10.5 |
-| Nginx externo | ✅ Funcionando con proxy correcto | pos16.qa.andespos.com |
-| DB PostgreSQL | ✅ Conectada (DB: pos) | 10.50.10.5 localhost |
-| CORS | ✅ FRONTEND_URL=https://pos16.qa.andespos.com | backend .env |
-| API Key / 401 | ✅ Resuelto — Nginx externo pasa x-api-key | — |
-| API Key mismatch local↔QA | ✅ Resuelto — `VITE_API_SECRET_KEY` en `frontend/.env` debe coincidir con `API_SECRET_KEY` del backend QA | — |
-| App en QA | ✅ https://pos16.qa.andespos.com/POSdashboard2603/ | — |
-| SalesHistoryChart — tooltip | ✅ Corregido (dataKey="day", identificador único) | — |
-| SalesHistoryChart — eje X | ✅ Legible con tick rotado -30° | — |
-| TopProductsChart — "Otros" | ✅ Algoritmo cobertura acumulada (reemplaza topN fijo) | — |
-| `refDate` — backend | ✅ parseRefDate, effectiveTo, isToday vs realNow | — |
-| `refDate` — frontend | ✅ App, Dashboard, client.ts, TimeRangeFilter, KPICards, SalesComparisonChart | — |
-| `SalesHistoryChart` — recibe refDate | ✅ Verificado — Props, fetch, useEffect deps | — |
-| `TopProductsChart` — recibe refDate | ✅ Verificado — Props, fetch, useEffect deps | — |
-| `SalesComparisonChart` — badge hora | ✅ Oculto cuando refDate es pasado + refDate en useEffect deps | — |
-| `TimeRangeFilter` — formato DD/MM/YYYY | ✅ react-datepicker + locale es + ocean theme CSS | — |
-| `dateUtils.ts` — módulo compartido | ✅ `backend/src/utils/dateUtils.ts` — toDayKey exportada | — |
-| Validación backend from > to | ✅ Ya existía en salesHistory.ts líneas 53-57 | — |
-| Validación frontend — refDate inválido | ✅ isValidRefDate gate en App.tsx + keyToDate defensiva + ErrorBoundary | — |
-| Shared utils frontend | ✅ `utils/format.ts` (formatCLP, formatCLPFull) + `utils/dateKeys.ts` (dateToKey, keyToDate, parseRefDateString, formatDayKey) | — |
-| Duplicate fetchSalesHistory | ✅ Eliminado — Dashboard owns fetch, KPICards y SalesHistoryChart reciben data via props | — |
-| Clock 60s re-render | ✅ Extraído a `<Clock />` component — solo Clock re-renderiza, no Dashboard entero | — |
-| ThemeContext value stability | ✅ Provider value en useMemo/useCallback — evita re-renders innecesarios en consumers | — |
-| TopProductsChart "Otros" memoization | ✅ Grouping logic envuelto en useMemo([raw]) | — |
-| App.css (dead code) | ✅ Eliminado — boilerplate Vite no usado | — |
-| pm2 startup systemd | ✅ pm2-dashboardapp.service enabled + dump.pm2 saved | 10.50.10.5 |
-| HTTPS / Certbot | ⏳ Pospuesto — riesgo en Nginx externo + panel embedded | — |
-| Token Tomcat | ⏳ Pendiente definición senior | — |
-| Winston logging | ✅ logger.ts + daily rotate + 13 console calls migrados | — |
-| Leak DATABASE_URL en logs | ✅ Eliminado — db.ts ya no loguea credenciales | — |
-| salesComparison — query consolidada | ✅ 5 queries → 1 con SUM(CASE WHEN) + IN clause | — |
-| Rate limiter 300 req/15min | ✅ Era 100, subido a 300 | backend index.ts |
-| Cache backend TTL 60s | ✅ `middleware/cache.ts` — charts endpoints | backend |
-| Tests Vitest + Supertest | ✅ 89 tests — salesComparison, dateUtils, salesHistory, topProducts, branches, products, validate, cache | backend |
-| Lint Recharts — `any` + `set-state-in-effect` | ✅ Corregido — `TooltipProps`/`AxisTickProps` + `useReducer` en SalesComparisonChart y TopProductsChart | frontend |
-| AbortController en fetches | ✅ P21 — 3 useEffects + client.ts signal + isAbortError utility | frontend |
-| Express app export para tests | ✅ `index.ts` exporta `{ app }`, no listen() en test | backend |
-| `fetchSalesComparison` — fallback defensivo | ✅ Retorna `{ data: json.data ?? [], currentHour: json.currentHour ?? 0 }` — consistente con resto de client.ts | frontend |
-| Docs — limpieza | ✅ Eliminados SESION-18MAR2026-DOCUMENTACION.md + Deploy POS Dashboard.zip. Historial técnico compactado (1071→757 líneas) | — |
-| Dark mode — contraste texto | ✅ `--text-label`/`--chart-axis` #2d4a6a→#718096 (ratio 1.5→5.0:1). `--text-muted` →#5a7a96, `--text-very-muted` →#516880. `DARK_COLORS.chartAxis` + `CustomizedAxisTick` usa `colors.chartAxis` | frontend |
-| Recharts 3 — tipos TypeScript | ✅ `TooltipProps` → interfaz local `TooltipContent`. `CustomizedAxisTick` → `(...args: any[])` con cast interno. `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts` del build | frontend/backend |
-| `frontend/.env.production` | ✅ Creado — Vite lo usa solo en `npm run build`. Separa key de prod de la key local en `.env` | frontend |
-| Manual Deploy Dashboard | ✅ Creado en `Recursos docs/Manual Deploy Dashboard.md` — guía paso a paso para deploy en servidor nuevo | docs |
-| pos-prod-sim (192.168.56.101) | ✅ Online + startup systemd | PM2 online, reboot verificado, túnel PuTTY activo |
+| Componente | Estado | Nota clave |
+|-----------|--------|------------|
+| App QA completa | ✅ Funcional | https://pos16.qa.andespos.com/POSdashboard2603/ |
+| Backend Express + PM2 | ✅ Online | 10.50.10.5 · pm2-dashboardapp.service enabled |
+| Frontend dist/ + Nginx | ✅ Servido | Nginx interno 10.50.10.5 + Nginx externo pos16.qa.andespos.com |
+| DB PostgreSQL | ✅ Conectada | localhost:5432 · DB: pos · schema: pos2407 |
+| Tests backend | ✅ 89/89 | Vitest + Supertest · `cd backend && npm test` |
+| pos-prod-sim (192.168.56.101) | ✅ Online | PM2 startup ok · depende de túnel PuTTY en Windows |
+| Dark mode WCAG AA | ✅ Auditado | 7 fixes contraste · todos ≥4.5:1 sobre bg-card |
+| Servidor QA — limpieza | ✅ Limpio | Sin `src/` en frontend ni backend · permisos corregidos |
+| Playbook Producción | ✅ Listo | `Recursos docs/Playbook-Produccion.md` · falta completar placeholders |
+| HTTPS / Certbot | ⏳ Pospuesto | Riesgo Nginx externo + panel embedded |
+| Token Tomcat | ⏳ Bloqueado | Pendiente definición con dev senior |
 
 ---
 
@@ -284,18 +249,8 @@ Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 |--------|------|---------------------|
 | 10 Abr | P25 completo — pos-prod-sim | Smoke tests OK (frontend 200, API con datos reales). PM2 startup systemd configurado (`pm2-dashboardapp.service` enabled). `pm2 save` ejecutado. Reboot verificado: pos-backend online automáticamente. Bug descubierto: PM2 sin `--cwd` crashea con "DATABASE_URL no configurada" porque usa home dir como CWD. Fix: `pm2 start ... --cwd /var/www/pos-dashboard/backend`. |
 | 10 Abr | Fix build + deploy pos-prod-sim | Fix Recharts 3 types: `TooltipContent` interfaz local, `CustomizedAxisTick` con `...args: any[]`, `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts`. `frontend/.env.production` con key de prod. Deploy a pos-prod-sim (192.168.56.101): WinSCP + permisos + .env + npm install + PM2 online + Nginx configurado. `Manual Deploy Dashboard.md` creado. |
-| 16 Mar | Frontend — Recharts | SalesHistoryChart: `dataKey="day"` (único), `tickFormatter` + `CustomizedAxisTick` -30°. TopProductsChart: cobertura acumulada `COBERTURA_OBJETIVO=0.80` / `MAX_SLICES=8` en lugar de topN fijo |
-| 18 Mar | Deploy QA | `vite.config.ts`: `base: '/POSdashboard2603/'` (crítico). Nginx interno 4 locations. Nginx externo: `proxy_set_header x-api-key` resolvió 401. `deploy-servidor-nuevo.sh`. `rejectUnauthorized: false` en db.ts (cert autofirmado QA) |
-| 18 Mar | Feature `refDate` | Backend: `parseRefDate` en validate.ts, `effectiveTo` en salesHistory, `now`/`realNow`/`isToday` en salesComparison. Frontend: App, Dashboard, client.ts, TimeRangeFilter (max), KPICards, SalesComparisonChart — todos reciben y propagan `refDate` |
-| 18 Mar | Pendientes críticos | `react-datepicker` con locale `es` + ocean theme CSS (~75 líneas index.css). pm2-dashboardapp.service enabled (bug startup: `-u dashboardapp` debe ir antes de `--hp`). `refDate` agregado a useEffect deps en SalesHistoryChart y TopProductsChart |
-| 18 Mar | P4 + P5 + P8 + Hardening | Badge hora oculto si refDate es pasado. `backend/src/utils/dateUtils.ts` con `toDayKey` compartida. Winston logger + daily rotate (13 console migrados, leak de DATABASE_URL eliminado). ErrorBoundary.tsx, `isValidRefDate`, `keyToDate` defensiva |
-| 19 Mar | Refactor /simplify | `utils/format.ts` (formatCLP, formatCLPFull). `utils/dateKeys.ts` (dateToKey, keyToDate, parseRefDateString, formatDayKey). Dashboard owns fetchSalesHistory con useReducer (-50% requests). `<Clock />` aislado. ThemeContext useMemo/useCallback. TopProductsChart useMemo. App.css eliminado |
-| 19 Mar | P20 + P23 + P10 | salesComparison: 5 queries → 1 (SUM CASE WHEN + IN). `middleware/cache.ts` TTL 60s. Rate limit 100→300. 21 tests Vitest+Supertest (salesComparison + dateUtils). Bugs resueltos: parámetro huérfano `$2`, `ANY($N::bigint[])` con pg |
-| 19 Mar | P21 AbortController | `client.ts`: `isAbortError()` + `AbortSignal` en 3 fetch functions. Dashboard, TopProductsChart, SalesComparisonChart: controller + cleanup `abort()` en cada useEffect. Verificado en DevTools: requests `(cancelled)` al cambiar filtros |
-| 08 Abr | Debug + fix | 401 → API key mismatch local↔QA (`VITE_API_SECRET_KEY` se bake en build time — verificar antes de cada build). `fetchSalesComparison` bug latente: sin fallback → `setData(undefined)` → TypeError. Fix defensivo aplicado (09 Abr) |
-| 09 Abr | Fix + limpieza docs | `fetchSalesComparison` en client.ts: `return { data: json.data ?? [], currentHour: json.currentHour ?? 0 }`. Eliminados SESION-18MAR2026-DOCUMENTACION.md y Deploy POS Dashboard.zip. Historial técnico compactado |
-| 09 Abr | P22 lint + P24 tests | P22: `any` en Recharts → `TooltipProps<number, number\|string>` (SalesHistoryChart, SalesComparisonChart) + `AxisTickProps` interface (SalesHistoryChart). `set-state-in-effect` → `useReducer` FETCH_START/SUCCESS/ERROR en TopProductsChart y SalesComparisonChart. P24: 21→89 tests — 6 nuevos archivos (branches, products, topProducts, salesHistory, validate, cache). `vi.importActual` para testear cache.ts real saltando mock global del setup. |
-| 09 Abr | Dark mode contrast fix | `index.css`: 4 variables dark mode corregidas (text-label, chart-axis, text-muted, text-very-muted). `ThemeContext.tsx`: `DARK_COLORS.chartAxis` #2d4a6a→#718096. `SalesHistoryChart.tsx`: `CustomizedAxisTick` ahora usa `colors.chartAxis` vía `useTheme()` en vez de `#6b7280` hardcodeado. Mejora WCAG: ratio 1.5:1→5.0:1 en labels KPI y ejes de gráficos. |
+| 14 Abr | Auditoría WCAG AA + playbook prod | 7 fixes contraste WCAG AA dark mode. Limpieza servidor QA (`src/` eliminado). `Playbook-Produccion.md` creado. Commit `1a7ca49`. |
+| 09 Abr | Fix + refactor + tests | `fetchSalesComparison` fallback defensivo. P22: lint Recharts any→tipos + useReducer. P24: 21→89 tests. Dark mode contrast fix inicial (text-label, chart-axis). |
 
 ---
 
@@ -412,136 +367,13 @@ Las variables `VITE_API_SECRET_KEY` se resuelven durante `npm run build`, no al 
 
 ---
 
-## 4. Bugs encontrados y cómo se resolvieron
+## 4. Bugs encontrados y resueltos
 
-### Tooltip desincronizado en SalesHistoryChart
-- **Síntoma:** Hover sobre `15/02/2026` mostraba datos de `15/02/2024`
-- **Causa:** `dataKey="label"` (string `"15/02"`) — colisión entre mismas fechas de distintos años
-- **Solución:** `dataKey="day"` (número YYYYMMDD, único por definición)
-
-### Eje X ilegible con rangos largos
-- **Síntoma:** 470+ días generaban ticks pisados
-- **Solución:** `minTickGap={40}` + `CustomizedAxisTick` con rotación -30° + `margin bottom: 20`
-
-### TopProductsChart — "Otros" dominaba el gráfico (69–70%)
-- **Síntoma:** Con 176–296 productos, "Otros" era la categoría dominante
-- **Causa:** `topN=7` fijo no escala con distribuciones de cola larga
-- **Solución:** Cobertura acumulada con `COBERTURA_OBJETIVO=0.80` y `MAX_SLICES=8`
-
-### API retornaba HTML en lugar de JSON
-- **Síntoma:** `Unexpected token '<'. "<!doctype ..." is not valid JSON`
-- **Causa:** `rewrite` + `alias` — Nginx servía `index.html` en lugar de proxear
-- **Solución:** `proxy_pass` directo; location API antes del location del frontend
-
-### PM2 daba EACCES al crear `.pm2/logs`
-- **Síntoma:** `permission denied, mkdir '/home/dashboardapp/.pm2/logs'`
-- **Causa:** Usuario sin home directory o sin permisos
-- **Solución:** `mkdir -p /home/dashboardapp/.pm2/{logs,pids,modules}` + `chown -R dashboardapp:dashboardapp`
-
-### `nginx -t` fallaba con `No such file or directory`
-- **Síntoma:** `open() "/etc/nginx/sites-enabled/default" failed`
-- **Causa:** Symlink `default` borrado pero referenciado en `nginx.conf`
-- **Solución:** `sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default`
-
-### Duplicate default server
-- **Síntoma:** `a duplicate default server for 0.0.0.0:80`
-- **Causa:** Dos bloques con `listen 80 default_server`
-- **Solución:** No usar `default_server` en `pos-dashboard`
-
-### 401 desde browser, 200 desde curl directo
-- **Síntoma:** Todos los fetch daban 401 desde `pos16.qa.andespos.com`
-- **Causa:** Nginx externo eliminaba el header `x-api-key`
-- **Solución:** `proxy_set_header x-api-key $http_x_api_key` en Nginx externo
-
-### Build del frontend fallaba en servidor QA
-- **Síntoma:** `Cannot find type definition file for 'vite/client'`
-- **Causa:** `npm install --omit=dev` no instaló Vite ni TypeScript
-- **Solución:** `npm install` completo antes de `npm run build`
-
-### `self-signed certificate` — 500 en todas las APIs
-- **Síntoma:** Todas las APIs retornaban 500 en QA
-- **Causa:** `rejectUnauthorized: true` — PostgreSQL QA usa certificado autofirmado
-- **Solución:** `rejectUnauthorized: false` en `db.ts`
-
-### `currentHour = refDate.getHours()` retornaría siempre 0
-- **Síntoma:** Detectado en análisis — no llegó a producción
-- **Causa:** `refDate` llega como `YYYYMMDD` sin componente horario
-- **Solución:** `currentHour = new Date().getHours()`
-
-### Naming collision `refDate`
-- **Síntoma:** Error de compilación TypeScript
-- **Causa:** Variable resultado con mismo nombre que el query param
-- **Solución:** `refDateRaw` + `refDateParsed`
-
-### Filtros de período ignoraban `refDate`
-- **Síntoma:** Presets siempre anclaban `to` en el día real
-- **Causa:** `getPreset()` llamaba `new Date()` internamente
-- **Solución:** `getPreset(days, refDate)` con patrón `refDate ? parseRef : new Date()`
-
-### `refDate` faltaba en dependency arrays de `useEffect`
-- **Síntoma:** Detectado en revisión de código — no llegó a producción visible porque `refDate` viene de URL y no cambia en runtime
-- **Causa:** Al implementar `refDate` en `SalesHistoryChart` y `TopProductsChart`, se agregó al fetch call pero se olvidó en el dependency array del `useEffect`
-- **Solución:** Agregar `refDate` al array: `[empkey, ubicod, timeRange.from, timeRange.to, products, refDate]`
-
-### API key mismatch → 401 en todos los endpoints (08 Abr)
-- **Síntoma:** Todos los `GET /api/*` retornaban 401 desde `pos16.qa.andespos.com`. App no mostraba datos.
-- **Causa:** `VITE_API_SECRET_KEY` en `frontend/.env` local (`e593c677...`) no coincidía con `API_SECRET_KEY` en el backend QA (`5ae939a8...`). Las variables `VITE_*` se bake en el bundle JS en build time — si la key cambia en el backend después del build, o si el frontend fue compilado con una key distinta, todos los requests llegan con credencial inválida.
-- **Solución:** Actualizar `frontend/.env` con la key del backend QA, rebuild frontend, redeploy dist/.
-- **Lección:** Antes de cada deploy, verificar que `VITE_API_SECRET_KEY` == `API_SECRET_KEY` del servidor destino.
-
-### `fetchSalesComparison` crasheaba con `TypeError: reading '0'` al recibir error HTTP (08 Abr)
-- **Síntoma:** Cascada del 401 anterior — `ErrorBoundary` activado con `TypeError: Cannot read properties of undefined (reading '0')`
-- **Causa:** `fetchSalesComparison` en `client.ts` retorna raw JSON sin fallback. Con 401, la respuesta es `{ error: 'No autorizado' }` (sin key `data`). `setData(undefined)` sobreescribe el estado inicial `[]`. Luego `data[0]?.total` → `undefined[0]` → TypeError. El `?.` protege el acceso al `.total` del elemento, no cuando `data` en sí es `undefined`.
-- **Solución aplicada:** Fix de configuración (key mismatch). **Fix defensivo aplicado (09 Abr):** `fetchSalesComparison` retorna `{ data: json.data ?? [], currentHour: json.currentHour ?? 0 }` — consistente con el resto de funciones en `client.ts`.
-- **Diferencia con otros fetchers:** `fetchBranches` → `data.branches ?? []`, `fetchTopProducts` → `data.data ?? []`. Solo `fetchSalesComparison` no tenía fallback.
-
-### Dark mode ilegible — labels KPI y ejes de gráficos (09 Abr)
-- **Síntoma:** QA feedback: "letras poco legibles en modo oscuro". Labels KPI ("Total del período", "Promedio diario"), etiquetas de ejes X/Y de los 3 charts y subtextos de KPICards prácticamente invisibles.
-- **Causa:** `--text-label` y `--chart-axis` tenían valor `#2d4a6a` — ratio de contraste 1.5:1 contra fondo `#060b18` (WCAG mínimo es 4.5:1). Adicionalmente, `CustomizedAxisTick` en `SalesHistoryChart` tenía `fill="#6b7280"` hardcodeado sin responder al tema.
-- **Solución:** 3 archivos modificados: (1) `index.css` — 4 variables dark mode corregidas; (2) `ThemeContext.tsx` — `DARK_COLORS.chartAxis` #2d4a6a→#718096; (3) `SalesHistoryChart.tsx` — `CustomizedAxisTick` usa `useTheme()` y `colors.chartAxis`.
-- **Valores antes/después:** `--text-label`: #2d4a6a (1.5:1) → #718096 (5.0:1) · `--chart-axis`: ídem · `--text-muted`: #475569 (4.1:1) → #5a7a96 (4.5:1) · `--text-very-muted`: #334155 (2.8:1) → #516880 (3.5:1 — decorativo).
-
-### PM2 startup generó servicio con `User=--hp`
-- **Síntoma:** `systemctl list-units | grep pm2` no retornaba nada, servicio nombrado `pm2---hp.service`
-- **Causa:** Comando `pm2 startup systemd -u --hp /home/dashboardapp` — el flag `-u` tomó `--hp` como valor en vez del username
-- **Solución:** Limpiar servicio roto (`systemctl disable` + `rm` + `daemon-reload`), recrear con `-u dashboardapp --hp /home/dashboardapp`
-
-### PM2 crashea con "DATABASE_URL no configurada" en pos-prod-sim (10 Abr)
-- **Síntoma:** `pm2 start dist/index.js --name pos-backend` → status `errored`, 15+ reinicios, logs: `FATAL: DATABASE_URL no está configurada`
-- **Causa:** Sin `--cwd`, PM2 usa `/home/dashboardapp/` como working directory. `dotenv.config()` busca `.env` en el CWD, no en el directorio del script. El `.env` está en `/var/www/pos-dashboard/backend/.env`.
-- **Solución:** `pm2 start /var/www/pos-dashboard/backend/dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`
+> Catálogo completo en `Recursos docs/FAQ Bugs Comandos diarios.md` — incluye síntoma, causa, solución y comandos de diagnóstico para cada bug histórico (Recharts, Nginx, PM2, dark mode, PostgreSQL, refDate).
 
 ---
 
 ## 5. Pendientes para próximas sesiones
-
-### ✅ Resueltos en sesión 18 Mar (pendientes críticos)
-
-- ~~**P1 — `react-datepicker` para formato DD/MM/YYYY**~~ → Implementado con locale `es`, ocean theme CSS, accesibilidad (aria-label, focus-visible, touch-action)
-- ~~**P2 — pm2 startup para `dashboardapp`**~~ → `pm2-dashboardapp.service` enabled + `dump.pm2` saved. Pendiente verificar con reboot real.
-- ~~**P3 — Verificar `SalesHistoryChart` y `TopProductsChart` reciben `refDate`**~~ → Verificado: Props, fetch y useEffect deps correctos. Fix aplicado: `refDate` faltaba en dependency arrays.
-
-### ✅ Resueltos en sesión 18 Mar (pendientes media prioridad)
-
-- ~~**P4 — Badge "hasta X:00 hs" en `SalesComparisonChart`**~~ → Solo visible si `!refDate || refDate === hoy`. Bonus: `refDate` agregado a useEffect deps.
-- ~~**P5 — `dateUtils.ts` — módulo compartido**~~ → `backend/src/utils/dateUtils.ts` con `toDayKey` exportada. Imports actualizados en `salesComparison.ts` y `salesHistory.ts`.
-- ~~**P6 — Validación backend `from > to`**~~ → Ya existía en `salesHistory.ts` líneas 53-57. No requirió cambios.
-- **Hardening extra** — `isValidRefDate()` en App.tsx, `keyToDate()` defensiva, `ErrorBoundary.tsx` global. Descubierto en QA con inputs inválidos.
-
-### ✅ Resueltos en sesión 18 Mar (baja prioridad)
-
-- ~~**P8 — Winston logging**~~ → `backend/src/logger.ts` con daily rotate. 13 console calls migrados. Leak de DATABASE_URL eliminado.
-
-### ✅ Resueltos en sesión 19 Mar (refactor /simplify)
-
-- ~~**P12 — Duplicate `fetchSalesHistory` (KPICards + SalesHistoryChart)**~~ → Dashboard owns fetch con `useReducer`, ambos reciben data como props. -50% requests al endpoint más usado.
-- ~~**P13 — Clock 60s re-render de todo Dashboard**~~ → Extraído a `<Clock />` component aislado. Solo el reloj se actualiza cada minuto.
-- ~~**P14 — Shared utils frontend**~~ → `utils/format.ts` (formatCLP, formatCLPFull) + `utils/dateKeys.ts` (dateToKey, keyToDate, parseRefDateString, formatDayKey). Elimina ~17 duplicaciones en 9 archivos.
-- ~~**P15 — ThemeContext value instability**~~ → Provider value en `useMemo`/`useCallback`, evita re-renders innecesarios en consumers.
-- ~~**P16 — TopProductsChart "Otros" sin memoizar**~~ → Grouping logic envuelto en `useMemo([raw])`.
-- ~~**P17 — `useMemo` dependency bug en Dashboard**~~ → `getDefaultTimeRange(refDate)` tenía `[]` vacío, corregido a `[refDate]`.
-- ~~**P18 — Dead code (App.css, getTopN, comentarios)**~~ → Eliminados.
-- ~~**P19 — Backend `parseRefDate` duplicaba validación**~~ → Ahora delega a `parseDateParam`.
 
 ### 🟡 Media prioridad (pospuestos / bloqueados)
 
@@ -557,42 +389,6 @@ sudo certbot --nginx -d pos16.qa.andespos.com
 Actualizar `FRONTEND_URL` en `.env`. Aplicar con `pm2 restart --update-env`.
 
 **P9 — Token Tomcat** — coordinar formato con dev senior · implementar en `auth.ts`
-
-### ✅ Resueltos en sesión 19 Mar (performance + infra)
-
-- ~~**P20 — Consolidar 5 queries de salesComparison en 1**~~ → 1 query con `SUM(CASE WHEN ...)` + `WHERE IN`. Pool de 5 conexiones a 1. Bug de parámetro huérfano encontrado y resuelto. NO usar `ANY($N::bigint[])` con pg — usar `IN ($a, $b, $c)` con params individuales.
-- ~~**P23 — Rate limiter + Cache backend**~~ → Rate limit 100 → 300 req/15min. Cache en memoria (`middleware/cache.ts`) con TTL 60s para 3 endpoints de charts. Solo cachea 2xx.
-- ~~**P10 — Tests Vitest + Supertest**~~ → 21 tests (18 salesComparison + 3 dateUtils). Cubre auth, validación, response format, caso crítico refDate pasado, parameterización SQL sin huecos, error handling. `npm test` en backend.
-
-### ✅ Resueltos en sesión 19 Mar (UX / race conditions)
-
-- ~~**P21 — AbortController en fetches**~~ → `client.ts` acepta `AbortSignal` en los 3 fetch functions + utilitaria `isAbortError()`. Dashboard, TopProductsChart y SalesComparisonChart crean `AbortController` en cada `useEffect`, pasan signal al fetch, y abortan en cleanup. Verificado en DevTools: requests `(cancelled)` al cambiar filtros rápido — solo la última ronda completa.
-
-### ✅ Resueltos en sesión 09 Abr (lint + tests)
-
-- ~~**P22 — Lint pre-existentes**~~ → `any` en Recharts props: `CustomizedAxisTick` → `AxisTickProps` (interface inline `{ x, y, payload }`), `CustomTooltip` → `TooltipProps<number, number>` (SalesHistoryChart) y `TooltipProps<number, string>` (SalesComparisonChart). `set-state-in-effect` en TopProductsChart y SalesComparisonChart → `useReducer` con acciones FETCH_START / FETCH_SUCCESS / FETCH_ERROR. `tsc --noEmit` sin errores.
-- ~~**P24 — Ampliar cobertura de tests**~~ → 21 → 89 tests. Nuevos archivos: `branches.test.ts` (8), `products.test.ts` (7), `topProducts.test.ts` (13), `salesHistory.test.ts` (15), `validate.test.ts` (20), `cache.test.ts` (5). `vi.importActual` para testear implementación real de cache.ts saltando el mock global del setup.
-
-### ✅ Resueltos en sesión 10 Abr (fix build + inicio deploy prod-sim)
-
-- ~~**Fix build Recharts 3**~~ → `TooltipProps<N,N>` ya no es válido para custom tooltips en Recharts 3 (omite `active/payload/label`). Solución: interfaz local `TooltipContent` + `content={<CustomTooltip />}`. `CustomizedAxisTick` → `(...args: any[])` con cast interno — patrón oficial de docs Recharts. `tsconfig.json` backend excluye `src/**/*.test.ts` y `src/test/**/*` del build de producción.
-- ~~**`frontend/.env.production`**~~ → Creado para separar key de prod de key local. Vite usa `.env.production` solo en `npm run build`, `.env` en dev. Elimina el riesgo de buildear con key incorrecta.
-- ~~**Manual Deploy Dashboard.md**~~ → Guía completa paso a paso en `Recursos docs/`. Cubre: build local, WinSCP, permisos, .env, npm install, túnel SSH, PM2, Nginx, startup systemd, smoke tests, redeploy, trampas conocidas.
-
-### ✅ Resuelto en sesión 10 Abr (P25 — pos-prod-sim backend online)
-
-- ~~**Nginx reload**~~ → `sudo systemctl reload nginx` ejecutado OK.
-- ~~**Túnel DB**~~ → pos-prod-sim (192.168.56.101) y QA (10.50.10.5) están en redes completamente aisladas (ping 100% loss). Solución: PuTTY en Windows como relay — tunnel `0.0.0.0:5433 → localhost:5432` hacia 10.50.10.5. Firewall Windows: regla `VirtualBox DB Tunnel` TCP 5433 desde 192.168.56.0/24. `.env` apunta a `192.168.56.1:5433`. Ver FAQ para detalle y comandos de diagnóstico.
-- ~~**API respondiendo**~~ → `curl /api/branches?empkey=1136` devuelve datos reales.
-
-### ✅ Resuelto en sesión 10 Abr (P25 completo — pos-prod-sim)
-
-~~**P25 restante**~~ — completado:
-1. ~~Smoke tests~~ → ✅ Frontend 200 OK, API con datos reales vía Nginx
-2. ~~PM2 startup systemd~~ → ✅ `pm2-dashboardapp.service` enabled, `pm2 save` ejecutado
-3. ~~Verificar reboot~~ → ✅ Reboot de VM exitoso, pos-backend online automáticamente (con PuTTY activo en Windows)
-
-**Nota:** PM2 debe arrancarse con `--cwd /var/www/pos-dashboard/backend` — sin esto falla con "DATABASE_URL no configurada".
 
 ### 🟢 Baja prioridad
 
@@ -740,6 +536,15 @@ Los valores de colores Recharts viven en `ThemeContext.tsx` (`DARK_COLORS`/`LIGH
 **Diagnóstico rápido de contraste WCAG**
 Ratios objetivo: texto normal ≥4.5:1 (AA), texto grande ≥3:1 (AA), decorativo ≥3:1 (trade-off aceptable). Calcular con: `(L1 + 0.05) / (L2 + 0.05)` donde `L1` = luminancia mayor. Para fondo `#060b18` (L≈0.002), cualquier color con L≥0.11 alcanza 4.5:1. El blue-gray del ocean theme #718096 tiene L≈0.19 → ratio 5.0:1 ✅.
 
+**bg-card (~#0c1a35, L≈0.011) es más oscuro que bg-page y exige colores más claros**
+`--text-muted` (#5a7a96) da 4.5:1 contra bg-page pero solo 3.8:1 contra bg-card. Para texto informacional sobre cards, usar `--text-mid` (#94a3b8, 6.7:1) o verificar que el color pase 4.5:1 contra L=0.011. Regla: necesitás L≥0.225 para pasar 4.5:1 contra bg-card.
+
+**Separar fill decorativo de color de texto en charts**
+`COLOR_OTROS = '#4b5563'` da 2.3:1 sobre bg-card — ilegible para texto. Solución: mantener el hex oscuro para el fill del pie (decorativo, 3:1 no requerido en shapes), pero para texto de leyenda usar `--text-muted` y para labels externos `--text-mid`. No reutilizar el color de fill directamente como `style={{ color }}` si ese color es oscuro.
+
+**Tooltip bg (#0d1e3a, L≈0.012) necesita colores más claros que bg-page**
+Labels de fecha/nombre dentro del tooltip deben usar `--text-mid`, no `--text-muted`. El fondo del tooltip es ligeramente más oscuro que bg-card, así que los mismos colores que fallan en cards también fallan en tooltips.
+
 ---
 
 ## Formato de datos — Base de Datos
@@ -818,6 +623,10 @@ SalesComparison — hourCondition:
 - **PM2 `--cwd` es obligatorio en pos-prod-sim** — `pm2 start dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`. Sin `--cwd`, PM2 usa el home del usuario como working directory y dotenv no encuentra el `.env` → crash con "DATABASE_URL no configurada"
 - **PM2 startup en pos-prod-sim**: usar `pm2 startup systemd -u dashboardapp --hp /home/dashboardapp` directamente como root (sin `sudo env` wrapper — sudo no está instalado en esta VM)
 - **pos-prod-sim reboot**: el backend sobrevive reboot de VM siempre que PuTTY en Windows esté activo. Si PuTTY se cierra, PM2 arranca pos-backend pero falla al conectar a la DB silenciosamente.
+- **Dark mode contraste validado (14 Abr)**: `--text-very-muted` es ahora `#6e8fa8` (L≈0.258, ratio ~5:1 bg-card). `badge-neutral` usa `#8399b0`. Tooltips y lista de comparación usan `--text-mid`. Leyenda "Otros" en TopProducts: fill del pie sigue en `#4b5563`, texto usa `--text-muted`/`--text-mid`.
+- **Servidor QA limpio (14 Abr)**: frontend en QA solo tiene `dist/`, `package.json`, `package-lock.json` y configs de build. Backend solo tiene `dist/`, `node_modules/`, `logs/`, `package.json`, `package-lock.json`, `.env`. No hay `src/` en ninguno de los dos.
+- **Playbook de producción**: `Recursos docs/Playbook-Produccion.md`. Servidor prod: Debian 12, Tomcat en 8080 (no tocar), PostgreSQL local, Nginx en 80, Nginx externo delante. `API_SECRET_KEY` prod: `0c8ed4477e54bac978f5344182486283401ac21c44c6d40ee92d4ded4442bfeb`. Pendiente completar: dominio prod, IP prod, credenciales DB, coordinar Nginx externo con compañero.
+- **Para el deploy a prod**: instalar Node 22 + PM2 + Nginx + crear `dashboardapp`. El `--cwd /var/www/pos-dashboard/backend` sigue siendo obligatorio en el `pm2 start`. El compañero del Nginx externo debe agregar `proxy_set_header x-api-key $http_x_api_key` — sin esto, 401 en todos los endpoints desde el dominio público.
 
 ### Metodología del equipo
 - Developer aprende haciendo → concepto + pista antes de solución completa
