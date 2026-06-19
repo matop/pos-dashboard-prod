@@ -1,29 +1,12 @@
-import { useEffect, useReducer } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { fetchSalesComparison, isAbortError } from '../../api/client';
+import { fetchSalesComparison } from '../../api/client';
 import type { SalesComparisonPoint } from '../../api/client';
+import { useFetchChartData } from '../../hooks/useFetchChartData';
 import { useTheme } from '../../context/ThemeContext';
 import { formatCLP, formatCLPFull } from '../../utils/format';
-import { dateToKey } from '../../utils/dateKeys';
 
-const BAR_COLORS = ['#3b82f6', 'rgba(96,165,250,0.65)', 'rgba(96,165,250,0.4)', 'rgba(167,139,250,0.55)', 'rgba(167,139,250,0.35)'];
 
-interface Props { empkey: string; ubicod: string | null; products: number[] | null; refDate: string | null }
-
-// ─── Reducer ─────────────────────────────────────────────────────────────────
-interface State { data: SalesComparisonPoint[]; currentHour: number; loading: boolean; error: string | null }
-type Action =
-  | { type: 'FETCH_START' }
-  | { type: 'FETCH_SUCCESS'; payload: { data: SalesComparisonPoint[]; currentHour: number } }
-  | { type: 'FETCH_ERROR'; payload: string };
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'FETCH_START':   return { ...state, loading: true, error: null };
-    case 'FETCH_SUCCESS': return { data: action.payload.data, currentHour: action.payload.currentHour, loading: false, error: null };
-    case 'FETCH_ERROR':   return { ...state, loading: false, error: action.payload };
-  }
-}
+interface Props { empkey: string; ubicod: string | null; products: number[] | null; refDate: string | null; refreshKey: number }
 
 interface TooltipContent { active?: boolean; payload?: Array<{ value: number }>; label?: string }
 const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
@@ -43,21 +26,14 @@ const CustomTooltip = ({ active, payload, label }: TooltipContent) => {
   );
 };
 
-export default function SalesComparisonChart({ empkey, ubicod, products,refDate }: Props) {
+export default function SalesComparisonChart({ empkey, ubicod, products, refDate, refreshKey }: Props) {
   const { colors } = useTheme();
-  const [state, dispatch] = useReducer(reducer, { data: [], currentHour: 0, loading: true, error: null });
-  const { data, currentHour, loading, error } = state;
-
-  useEffect(() => {
-    const controller = new AbortController();
-    dispatch({ type: 'FETCH_START' });
-    fetchSalesComparison({ empkey, ubicod, products, refDate, signal: controller.signal })
-      .then(res => dispatch({ type: 'FETCH_SUCCESS', payload: res }))
-      .catch(e => {
-        if (!isAbortError(e)) dispatch({ type: 'FETCH_ERROR', payload: e.message });
-      });
-    return () => controller.abort();
-  }, [empkey, ubicod, products, refDate]);
+  const { data: fetchResult, loading, error } = useFetchChartData(
+    (signal) => fetchSalesComparison({ empkey, ubicod, products, refDate, signal }),
+    [empkey, ubicod, products, refDate, refreshKey],
+    { data: [] as SalesComparisonPoint[], currentHour: null },
+  );
+  const { data, currentHour } = fetchResult;
 
   const todayTotal = data[0]?.total ?? 0;
 
@@ -93,8 +69,7 @@ export default function SalesComparisonChart({ empkey, ubicod, products,refDate 
           )}
         </div>
         {!loading && (() => {
-          const todayKey = String(dateToKey(new Date()));
-          const showBadge = !refDate || refDate === todayKey;
+          const showBadge = currentHour !== null;
           return showBadge ? (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono" style={{
               background: 'rgba(251,191,36,0.06)',
@@ -149,7 +124,7 @@ export default function SalesComparisonChart({ empkey, ubicod, products,refDate 
               <Tooltip content={<CustomTooltip />} cursor={{ fill: colors.cursor }} />
               <Bar dataKey="total" radius={[5, 5, 0, 0]} maxBarSize={52}>
                 {data.map((_, i) => (
-                  <Cell key={i} fill={BAR_COLORS[i] ?? '#60a5fa'} />
+                  <Cell key={i} fill={colors.comparison[i] ?? colors.primary} />
                 ))}
               </Bar>
             </BarChart>

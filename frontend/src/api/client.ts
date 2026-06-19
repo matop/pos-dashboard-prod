@@ -2,6 +2,7 @@ export interface Branch { ubicod: string; nombre: string; }
 export interface Product { productokey: number; descripcion: string; }
 export interface SalesHistoryPoint { day: number; total: number; }
 export interface TopProductPoint { productokey: number; descripcion: string; total: number; }
+export interface TopCategoryPoint { categoria: string; total: number; }
 export interface SalesComparisonPoint { label: string; total: number; }
 
 export function isAbortError(err: unknown): boolean {
@@ -16,7 +17,7 @@ if (!API_KEY) {
 }
 
 // Todos los fetches usan este helper — agrega el header automáticamente
-async function apiFetch(path: string, signal?: AbortSignal): Promise<Response> {
+export async function apiFetch(path: string, signal?: AbortSignal): Promise<Response> {
   return fetch(path, {
     headers: {
       'x-api-key': API_KEY,
@@ -82,16 +83,30 @@ export async function fetchTopProducts(params: {
   return data.data ?? [];
 }
 
+export async function fetchTopCategories(params: {
+  empkey: string;
+  ubicod?: string;
+  from?: string;
+  to?: string;
+  signal?: AbortSignal;
+}): Promise<TopCategoryPoint[]> {
+  const { signal, ...rest } = params;
+  const query = buildParams(rest);
+  const res = await apiFetch(`/api/charts/top-categories?${query}`, signal);
+  const json = await res.json();
+  return (json.data ?? []) as TopCategoryPoint[];
+}
+
 export async function fetchSalesComparison(params: {
   empkey: string;
   ubicod?: string | null;
   products?: number[] | null;
   refDate?: string | null;
   signal?: AbortSignal;
-}): Promise<{ data: SalesComparisonPoint[]; currentHour: number }> {
+}): Promise<{ data: SalesComparisonPoint[]; currentHour: number | null }> {
   const { signal, ...rest } = params;
   const qs = buildParams({ ...rest, products: rest.products ?? undefined });
   const res = await apiFetch(`/api/charts/sales-comparison?${qs}`, signal);
   const json = await res.json();
-  return { data: json.data ?? [], currentHour: json.currentHour ?? 0 };
+  return { data: json.data ?? [], currentHour: json.currentHour ?? null };
 }

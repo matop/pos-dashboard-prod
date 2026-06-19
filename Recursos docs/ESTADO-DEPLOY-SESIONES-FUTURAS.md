@@ -1,6 +1,5 @@
 # POS Dashboard — Estado del Deploy y Contexto para Sesiones Futuras
-> Última actualización: 14 Abril 2026
-> Integra sesiones: 16 Mar (bugs Recharts) · 18 Mar (deploy QA) · 18 Mar (feature refDate) · 18 Mar (pendientes críticos P1–P3) · 19 Mar (refactor /simplify — dedup, performance, shared utils) · 19 Mar (P20 query consolidada + P23 rate limiter/cache + P10 tests) · 19 Mar (P21 AbortController en fetches) · 08 Abr (doc: fix 404 post-WinSCP manual deploy) · 08 Abr (debug: API key mismatch local↔QA → 401 + crash cascada) · 09 Abr (fix fetchSalesComparison fallback + limpieza docs) · 09 Abr (P22 lint Recharts any→tipos + useReducer) · 09 Abr (P24 tests 21→89) · 09 Abr (fix dark mode contrast — text-label/chart-axis legibles) · 10 Abr (fix build Recharts 3 types + deploy pos-prod-sim pasos 1–7) · 10 Abr (P25: pos-prod-sim backend online con túnel PuTTY Windows→DB + commit historial completo) · 10 Abr (P25 completo: smoke tests + PM2 startup systemd + reboot verificado) · 14 Abr (auditoría WCAG AA dark mode — 7 fixes contraste + playbook producción)
+> Última actualización: 19 Jun 2026 (sesión 2)
 
 ---
 
@@ -9,16 +8,29 @@
 | Componente | Estado | Nota clave |
 |-----------|--------|------------|
 | App QA completa | ✅ Funcional | https://pos16.qa.andespos.com/POSdashboard2603/ |
-| Backend Express + PM2 | ✅ Online | 10.50.10.5 · pm2-dashboardapp.service enabled |
+| Backend NestJS + PM2 | ✅ Online en QA | dist/main.js · 111/111 tests · health OK · class-validator 0.15.1 |
 | Frontend dist/ + Nginx | ✅ Servido | Nginx interno 10.50.10.5 + Nginx externo pos16.qa.andespos.com |
 | DB PostgreSQL | ✅ Conectada | localhost:5432 · DB: pos · schema: pos2407 |
-| Tests backend | ✅ 89/89 | Vitest + Supertest · `cd backend && npm test` |
+| Tests backend | ✅ 111/111 | Jest + Supertest · `cd backend && pnpm test` |
+| PRD Architecture Deepening | ✅ Completo | R1+R2+R3+R4+R5 todos implementados |
+| PRD Top Chart Mode | ✅ Completo | Slices #1–#7 completos · GeneXus integrado |
+| Sidecar parameter-device en QA | ✅ Online | Puerto 3002 · responde DashboardTopMode · backend .env OK |
+| Frontend dist/ Top Chart Mode | ✅ Desplegado en QA | Verificado 18 Jun 2026 · ambos dashboards funcionando |
+| Top Categories — nombres completos | ✅ Desplegado en QA | JOIN a dwpn4categoriaproducto (vista) para resolver dwpn4catnom · fix 500 post-deploy · 18 Jun 2026 |
+| PRD Sales Comparison Auto-shift | ✅ Implementado · ⏳ pendiente deploy QA | `backend/src/charts/sales-comparison.service.ts` · 111/111 tests · 19 Jun 2026 |
+| CONTEXT.md (glosario de dominio) | ✅ Creado | Glosario canónico del proyecto en raíz · 19 Jun 2026 |
+| GET /api/charts/top-categories | ✅ Implementado | TopCategoriesService + 11 tests · JOIN dwpn4categoriaproducto · GROUP BY catcod, SELECT catnom |
+| GET /api/params | ✅ Implementado (GeneXus real) | Llama sidecar :3002 · caché 5 min · fallback '1' · 13 tests · PARAMS_APP_ID=ServidorPOS confirmado |
+| TopCategoriesChart + useAppParams | ✅ Implementado | Render condicional en Dashboard · ProductFilter disabled en modo 2 |
+| DB connection SSL (SV Sandbox→QA CONF) | ⏳ Bloqueado infra | DatabaseModule listo con `DB_SSL=true` · falta port forwarding TCP 5432 en NAT QA CONF |
+| Playbook PostgreSQL prod | ✅ Listo | `Recursos docs/Playbook-PostgreSQL-Produccion.md` |
 | pos-prod-sim (192.168.56.101) | ✅ Online | PM2 startup ok · depende de túnel PuTTY en Windows |
 | Dark mode WCAG AA | ✅ Auditado | 7 fixes contraste · todos ≥4.5:1 sobre bg-card |
 | Servidor QA — limpieza | ✅ Limpio | Sin `src/` en frontend ni backend · permisos corregidos |
 | Playbook Producción | ✅ Listo | `Recursos docs/Playbook-Produccion.md` · falta completar placeholders |
 | HTTPS / Certbot | ⏳ Pospuesto | Riesgo Nginx externo + panel embedded |
 | Token Tomcat | ⏳ Bloqueado | Pendiente definición con dev senior |
+| Servidores sandbox (2 sv) | ✅ Online | pos16.sb.andespos.com · app conectada a DB QA · Nginx server_name fix aplicado |
 
 ---
 
@@ -29,6 +41,8 @@
 | VM desarrollo | 192.168.56.99 | Origen del build, testing | SSH + WinSCP |
 | Servidor QA | 10.50.10.5 (qa-pos16) | App + DB | SSH + WinSCP |
 | Proxy externo | pos16.qa.andespos.com | Nginx reverse proxy + HTTPS | Solo 1 compañero |
+| Sandbox sv 1 (pos16-sb) | pos16.sb.andespos.com | App sandbox (conecta a DB QA) | SSH como root |
+| Sandbox sv 2 | (segunda IP sandbox) | App sandbox (conecta a DB QA) | SSH como root |
 
 ---
 
@@ -54,9 +68,12 @@ NODE_ENV=production
 DATABASE_URL=postgresql://postgres:postgres1267!@localhost:5432/pos
 FRONTEND_URL=https://pos16.qa.andespos.com
 API_SECRET_KEY=5ae939a89529c096128578c1048ed3ac1c07e6f8dd62e1f29395ad29ea9e36a6
+PARAMS_SIDECAR_URL=http://localhost:3002
+PARAMS_APP_ID=ServidorPOS                  # ← confirmado 08 Jun 2026 via curl al sidecar
 ```
 
 > ⚠️ `API_SECRET_KEY` debe ser idéntica a `VITE_API_SECRET_KEY` en el frontend `.env`.
+> Si `PARAMS_APP_ID` está vacío, `GET /api/params` retorna `{ topMode: '1' }` sin llamar al sidecar — comportamiento seguro mientras no esté configurado.
 > Generar con: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
 ---
@@ -67,7 +84,7 @@ API_SECRET_KEY=5ae939a89529c096128578c1048ed3ac1c07e6f8dd62e1f29395ad29ea9e36a6
 /var/www/pos-dashboard/
 ├── backend/
 │   ├── dist/          ← compilado TypeScript (transferido desde VM)
-│   ├── node_modules/  ← generado con npm install --omit=dev
+│   ├── node_modules/  ← generado con pnpm install --prod
 │   └── .env           ← credenciales producción (chmod 600)
 └── frontend/
     └── dist/          ← build React con base='/POSdashboard2603/'
@@ -164,11 +181,9 @@ sudo -u dashboardapp HOME=/home/dashboardapp pm2 logs pos-backend --lines 50
 # ── Redeploy (cuando llegue nuevo build desde VM) ────────────
 bash /var/www/pos-dashboard/deploy-servidor-nuevo.sh
 
-# ── Rebuild frontend en el servidor ──────────────────────────
-# ⚠️ npm install completo (con devDeps) — vite y tsc son devDependencies
-cd /var/www/pos-dashboard/frontend
-npm install
-npm run build
+# ── Rebuild (solo desde VM dev, no en servidor) ───────────────
+# El backend usa pnpm. Nunca buildear directamente en el servidor.
+# Construir en VM dev y subir dist/ via deploy.sh o WinSCP.
 
 # ── Reiniciar backend tomando NUEVAS variables de entorno ─────
 sudo -u dashboardapp HOME=/home/dashboardapp pm2 restart pos-backend --update-env
@@ -194,7 +209,7 @@ curl "http://localhost/POSdashboard2603/api/charts/sales-comparison?empkey=1136&
 
 **Causa raíz:** pm2 y Nginx no se restartearon — siguen sirviendo el código viejo en memoria.
 
-- **pm2** carga `backend/dist/index.js` en memoria al arrancar y no lo relee automáticamente al sobreescribirse el archivo.
+- **pm2** carga `backend/dist/main.js` en memoria al arrancar y no lo relee automáticamente al sobreescribirse el archivo.
 - **Nginx/browser**: Vite genera nombres con content hash (e.g. `assets/index-Ab1c.js`). El nuevo `index.html` referencia los nuevos hashes. Si Nginx o el browser devuelven el viejo `index.html`, los assets con hash nuevo no existen → 404.
 
 ### Fix completo (SSH en 10.50.10.5)
@@ -243,18 +258,247 @@ Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 
 ---
 
-## 1. Historial de sesiones — resumen
+---
 
-| Sesión | Área | Cambios principales |
-|--------|------|---------------------|
-| 10 Abr | P25 completo — pos-prod-sim | Smoke tests OK (frontend 200, API con datos reales). PM2 startup systemd configurado (`pm2-dashboardapp.service` enabled). `pm2 save` ejecutado. Reboot verificado: pos-backend online automáticamente. Bug descubierto: PM2 sin `--cwd` crashea con "DATABASE_URL no configurada" porque usa home dir como CWD. Fix: `pm2 start ... --cwd /var/www/pos-dashboard/backend`. |
-| 10 Abr | Fix build + deploy pos-prod-sim | Fix Recharts 3 types: `TooltipContent` interfaz local, `CustomizedAxisTick` con `...args: any[]`, `content={<CustomTooltip />}`. `tsconfig.json` excluye `*.test.ts`. `frontend/.env.production` con key de prod. Deploy a pos-prod-sim (192.168.56.101): WinSCP + permisos + .env + npm install + PM2 online + Nginx configurado. `Manual Deploy Dashboard.md` creado. |
-| 14 Abr | Auditoría WCAG AA + playbook prod | 7 fixes contraste WCAG AA dark mode. Limpieza servidor QA (`src/` eliminado). `Playbook-Produccion.md` creado. Commit `1a7ca49`. |
-| 09 Abr | Fix + refactor + tests | `fetchSalesComparison` fallback defensivo. P22: lint Recharts any→tipos + useReducer. P24: 21→89 tests. Dark mode contrast fix inicial (text-label, chart-axis). |
+## Historial técnico — sesiones recientes
+
+### 19 Jun 2026 (sesión 2) — Implementación PRD Sales Comparison Auto-shift
+
+**Contexto:** Implementación completa del auto-shift acordado en la sesión anterior. El backend detecta automáticamente si hoy tiene datos en `dwpreporte`; si no los tiene, usa ayer como referencia sin requerir intervención del usuario.
+
+**Archivos modificados (backend):**
+- `src/charts/sales-comparison.service.ts` — refactorizado completamente:
+  - Nuevo método privado `hasDayData(empkey, ubicod, products, dayKey)`: COUNT query con `QueryBuilder`, fallback `false` en error
+  - `currentHour: number | null` — null cuando día de referencia es cerrado (auto-shift o refDate en el pasado)
+  - Validación de `ubicod` movida al inicio del método (antes de llamar a `hasDayData`)
+  - Labels auto-shift: `['Ayer', 'Hace 2 días', 'Hace 1 semana', 'Hace 1 mes', 'Hace 1 año']`
+  - `refDate` explícito: siempre respetado, sin COUNT; currentHour = hora actual si refDate=hoy, null si en el pasado
+
+**Archivos modificados (frontend):**
+- `src/api/client.ts` — `fetchSalesComparison` return type: `currentHour: number | null`; fallback `?? null` (antes `?? 0`)
+- `src/components/charts/SalesComparisonChart.tsx` — 3 cambios:
+  - `initialData.currentHour`: `0` → `null`
+  - Badge condition: `!refDate || refDate === todayKey` → `currentHour !== null` (elimina lógica de fecha duplicada en cliente)
+  - Import `dateToKey` eliminado (ya no se usa; evita error `noUnusedLocals`)
+
+**Tests:**
+- `src/charts/sales-comparison.controller.spec.ts` — 7 cambios:
+  - Tests 7001 y 7002 actualizados: mock con 2 llamadas (`mockResolvedValueOnce × 2`) para que COUNT retorne datos hoy → no auto-shift
+  - 5 tests nuevos en sección `AUTO-SHIFT` (empkeys 9101–9105):
+    1. Hoy sin datos → labels desde ayer + currentHour null
+    2. Hoy con datos → labels desde hoy + currentHour number
+    3. refDate explícito hoy → 1 sola llamada a mockQuery, currentHour number
+    4. refDate explícito pasado → 1 sola llamada, currentHour null
+    5. Hoy y ayer sin datos → shift a ayer igual (máx 1 día), totales 0
+
+**Resultado:** 111/111 tests ✅ · tsc backend sin errores ✅ · frontend build sin errores ✅
+
+**Pendiente:** Deploy a QA (backend dist/ + frontend dist/)
 
 ---
 
-## 2. Decisiones de diseño tomadas
+### 19 Jun 2026 — Diseño Sales Comparison Auto-shift + CONTEXT.md
+
+**Contexto:** Sesión de grilling sobre feedback del cliente. El gráfico de Comparación de Ventas muestra "Hoy" = 0 durante todo el horario laboral porque el batch de cierre carga datos recién a las 23:00. Los deltas de comparación no aportan valor en esas condiciones.
+
+**Decisiones de diseño acordadas:**
+- Backend auto-shift: cuando `refDate` no viene explícito y hoy tiene 0 datos → usar ayer como referencia
+- Labels al hacer shift: "Ayer", "Hace 2 días", "Hace 1 semana", "Hace 1 mes", "Hace 1 año"
+- Signal al frontend: `currentHour: number | null` — null = día cerrado completo, no mostrar badge
+- Shift máximo 1 día (si ayer también es 0, mostrar igual sin buscar más atrás)
+- `refDate` explícito en URL siempre se respeta sin auto-shift
+
+**Archivos creados:**
+- `CONTEXT.md` (raíz) — glosario canónico: Batch de cierre, Anchor, refDate, Auto-shift, currentHour, empkey, ubicod, topMode, DayKey
+- `Recursos docs/PRD-SalesComparison-AutoShift.md` — PRD completo con user stories, decisiones de implementación y plan de tests
+
+**Sin cambios de código en esta sesión — implementación queda para próxima sesión.**
+
+---
+
+### 18 Jun 2026 (noche) — Fix 500 en top-categories post-deploy
+
+**Contexto:** Después del deploy de Top Chart Mode, `GET /api/charts/top-categories` retornaba 500. La sesión anterior había cambiado `SELECT dwpn4catcod` a `SELECT dwpn4catnom` asumiendo que esa columna existía en la vista `dwpproducto`, pero no es así.
+
+**Causa raíz:** La vista `dwpproducto` solo tiene `dwpn4catcod` (código de categoría). El nombre completo (`dwpn4catnom`) vive en `dwpn4categoriaproducto`, que también es una vista (no tabla) — filtra `dwpfullcategoriaproducto WHERE nivel=4`.
+
+**Archivos modificados:**
+- `backend/src/charts/top-categories.service.ts` — agregado `LEFT JOIN dwpn4categoriaproducto cat ON TRIM(p.dwpn4catcod) = TRIM(cat.dwpn4catcod) AND r.dwpempkey = cat.dwpempkey` · SELECT pasa a `TRIM(cat.dwpn4catnom)` · GROUP BY `TRIM(cat.dwpn4catcod), TRIM(cat.dwpn4catnom)`
+
+**Deploy:** solo backend (`pm2 restart pos-backend --update-env`) · verificado en QA ✅
+
+**Tests:** 106/106 ✅ · tsc: sin errores ✅
+
+---
+
+### 18 Jun 2026 — Deploy Top Chart Mode en QA + fix nombres de categorías
+
+**Contexto:** Primera sesión tras pausa. Deploy de Top Chart Mode (pendiente desde 09 Jun) y fix de feedback del cliente: las categorías mostraban códigos truncados del sistema (`PapelHigie`, `ShmpAcndr`) en vez de descripciones legibles.
+
+**Archivos modificados (backend):**
+- `src/charts/top-categories.service.ts` — SELECT cambiado de `TRIM(p.dwpn4catcod)` a `TRIM(p.dwpn4catnom)` · GROUP BY ahora incluye ambos: `TRIM(p.dwpn4catcod), TRIM(p.dwpn4catnom)` (catcod como key de agrupación estable, catnom como display)
+- `package.json` — `@types/express` agregado explícitamente a devDependencies
+
+**Bug encontrado y resuelto:**
+- **Síntoma:** `pnpm test` fallaba con `Cannot find module 'express'` en 7 de 8 suites tras rebuild de node_modules
+- **Causa:** `@types/express` no estaba declarado en `package.json`; era dependencia transitiva de `@nestjs/platform-express`. pnpm strict no lo hoistea cuando reconstruye desde cero
+- **Solución:** `pnpm add -D @types/express` — declaración explícita requerida porque `api-key.guard.ts` importa `Request` de `express` directamente
+
+**Deploy:**
+- Frontend Top Chart Mode subido a QA por el usuario · verificado con ambos dashboards (topMode 1 y 2) ✅
+- Backend con fix dwpn4catnom subido a QA y reiniciado con pm2 ✅
+
+**Tests:** 106/106 ✅ · tsc: sin errores ✅
+
+---
+
+### 11 Jun 2026 — Revisión completa y actualización de CLAUDE.md
+
+**Contexto:** Proyecto migrado a nuevo path (`C:\Claude\POS Dashboard`). Se detectó que CLAUDE.md tenía datos incorrectos y secciones desactualizadas respecto al estado real del codebase.
+
+**Archivo modificado:**
+- `CLAUDE.md` — reescrito en su totalidad con las siguientes correcciones:
+  - Frontend package manager: `npm` → `pnpm` (ambos repos usan pnpm)
+  - Test count: 67 → 106
+  - Query params: `startDate/endDate` → `from/to` (y `refDate` donde aplica en sales-history y sales-comparison)
+  - ChartsModule: "3 services" → 4 (incluye TopCategoriesService)
+  - `src/app.module.ts`: agregado `ParamsModule` a la lista de imports
+  - Backend: agregado `src/params/` (ParamsModule + sidecar GeneXus)
+  - Backend: agregado `src/common/utils/query-builder.ts` (`QueryBuilder` class)
+  - API endpoints: agregados `/api/params` y `/api/charts/top-categories` con params correctos
+  - PostgreSQL rules: actualizadas para mostrar uso de `QueryBuilder` (reemplaza manejo manual de `$N`)
+  - Frontend: documentados todos los hooks (`useFilters`, `useFetchChartData`, `useAppParams`, `useDismissableDropdown`)
+  - Frontend: agregados `utils/dateKeys.ts`, `utils/format.ts`, `KPICards.tsx`, `ErrorBoundary.tsx`
+  - Variables de entorno: agregadas `PARAMS_SIDECAR_URL` y `PARAMS_APP_ID`
+  - Gotchas: `pnpm approve-builds --all` (ERR_PNPM_IGNORED_BUILDS), `deploy.sh` usa npm para frontend
+
+**Sin cambios de código** — sesión exclusivamente de mantenimiento de documentación.
+
+---
+
+### 09 Jun 2026 — Fix build frontend Top Chart Mode + sidecar QA online
+
+**Contexto:** Sidecar parameter-device subido a QA (puerto 3002). Backend `.env` ya tenía `PARAMS_SIDECAR_URL` y `PARAMS_APP_ID=ServidorPOS`. Faltaba corregir errores TS del frontend para poder buildear.
+
+**Archivos modificados (frontend):**
+- `src/api/client.ts` — `apiFetch` cambiado a `export async function` (era función privada; `useAppParams` necesita importarla)
+- `src/components/charts/TopCategoriesChart.tsx` — 4 fixes:
+  1. Import `TimeRange` desde `filters/TimeRangeFilter`
+  2. Props `timeRange` cambiado de `{ from: string; to: string }` a `TimeRange` (from/to son `number`)
+  3. `refDate` eliminado del destructuring del componente (está en Props interface para compatibilidad con Dashboard, pero no se usa internamente → `noUnusedParameters` lo rechazaba)
+  4. `timeRange.from/to` convertidos con `String()` al llamar `fetchTopCategories` (API espera strings)
+
+**Errores resueltos:**
+- TS6133: `refDate` declared but never read
+- TS2322: `TimeRange` (`number`) not assignable to `{ from: string; to: string }`
+- TS2459: `apiFetch` not exported from `client`
+- TS7006: `res` implicitly has any type (downstream del error anterior)
+
+**Estado:** build corregido · frontend dist/ pendiente de subir a QA
+
+---
+
+### 08 Jun 2026 (noche) — Integración real sidecar GeneXus: DashboardTopMode confirmado
+
+**Archivos modificados (backend):**
+- `src/params/params.service.ts` — URL actualizada con `alcance=` y `parametro=DashboardTopMode` (antes `DASHBOARD_TOP_MODE`). Mapping cambiado: `ValorParametroValor: "Producto"` → `'1'`, `"Categoria"` → `'2'` (antes comparaba `'1'`/`'2'` directamente). Interface `GeneXusParamsResponse` actualizada con todos los campos reales del sidecar (`ParametroJerarquia`, `Persistencia`, `ValorInstanciado`, `ValorJerarquia`, `ValorParametroFin`, `ValorParametroIni`).
+- `src/params/params.controller.spec.ts` — `gxResponse` helper actualizado: `ParametroId: 'DashboardTopMode'` + todos los campos reales. Tests usan `'Producto'`/`'Categoria'` en vez de `'1'`/`'2'`/`'3'`.
+- `backend/.env` — `PARAMS_APP_ID=ServidorPOS` (confirmado con curl al sidecar local).
+
+**Verificaciones:**
+- Curl al sidecar: `GET http://localhost:3002/parameter/values?app=ServidorPOS&alcance=&parametro=DashboardTopMode&empkey=1136` → `{ ValorParametroValor: "Producto" }` ✅
+- Tests: 106/106 ✅ · tsc: sin errores ✅
+
+**Pendiente para QA:** actualizar `PARAMS_APP_ID=ServidorPOS` en `/var/www/pos-dashboard/backend/.env` y `pm2 restart pos-backend --update-env`. Verificar que el sidecar `:3002` esté corriendo en el servidor QA.
+
+---
+
+### 08 Jun 2026 (tarde) — PRD Top Chart Mode: slice #7 — integración GeneXus real
+
+**Archivos modificados (backend):**
+- `src/params/params.service.ts` — reemplazado stub con llamada real al sidecar (:3002). Caché in-memory 5 min por empkey. Timeout 3s con `AbortSignal.timeout`. Fallback silencioso a `'1'` en cualquier error. Si `PARAMS_APP_ID` está vacío → retorna `'1'` sin fetch.
+- `src/params/params.controller.spec.ts` — ampliado de 7 a 13 tests: grupo sin sidecar (comportamiento fallback) + grupo con sidecar mockeando `global.fetch` (topMode '1', topMode '2', ECONNREFUSED, HTTP 500, array vacío, Ok=false, valor desconocido '3')
+- `backend/.env` — agregadas `PARAMS_SIDECAR_URL=http://localhost:3002` y `PARAMS_APP_ID=` (vacío hasta confirmar app name)
+
+**Tests:** 106/106 ✅ · tsc: sin errores ✅
+
+**Resuelto:** `PARAMS_APP_ID=ServidorPOS` confirmado vía curl al sidecar (08 Jun 2026). `backend/.env` actualizado en VM dev. Pendiente: setear en QA server y `pm2 restart pos-backend --update-env`.
+
+---
+
+### 08 Jun 2026 — PRD Top Chart Mode: slices #1–#6
+
+**Archivos creados (backend):**
+- `src/charts/top-categories.service.ts` — nuevo service, GROUP BY TRIM(p.dwpn4catcod), fallback "Sin categoría", params: empkey/ubicod/from/to (sin products)
+- `src/charts/top-categories.controller.spec.ts` — 11 tests (auth, validación, response shape, null fallback, orphan params, 500)
+- `src/params/params.controller.ts` — GET /api/params?empkey=X, protegido por ApiKeyGuard
+- `src/params/params.service.ts` — stub hardcodeado `{ topMode: '1' }`, listo para reemplazar con GeneXus en slice #7
+- `src/params/params.module.ts` — módulo NestJS estándar
+- `src/params/params.controller.spec.ts` — 7 tests (auth, validación, response stub)
+
+**Archivos modificados (backend):**
+- `src/charts/charts.controller.ts` — handler `GET /api/charts/top-categories` (empkey, ubicod?, from?, to?)
+- `src/charts/charts.module.ts` — TopCategoriesService registrado como provider
+- `src/app.module.ts` — ParamsModule agregado a imports
+- `src/charts/*.controller.spec.ts` (3 archivos) — TopCategoriesService agregado a providers (fix por nuevo dep del controller)
+
+**Archivos creados (frontend):**
+- `src/hooks/useAppParams.ts` — fetchea /api/params una vez al montar, fallback silencioso a '1'
+- `src/components/charts/TopCategoriesChart.tsx` — replica TopProductsChart sin prop products, título "Top Categorías", llama fetchTopCategories
+
+**Archivos modificados (frontend):**
+- `src/api/client.ts` — tipo TopCategoryPoint + función fetchTopCategories
+- `src/components/Dashboard.tsx` — useAppParams + render condicional topMode===2→TopCategoriesChart
+- `src/components/filters/ProductFilter.tsx` — prop disabled?: boolean; cuando disabled: botón disabled, label forzado, dropdown no abre
+
+**Tests:** 99/99 ✅ (subió de 81 a 99 con 18 tests nuevos)
+**tsc backend + frontend:** sin errores ✅
+
+**Slice #7 completo.** Pendiente menor: confirmar `PARAMS_APP_ID` con admin GeneXus y setear en `.env` del servidor QA (`pm2 restart pos-backend --update-env`).
+
+---
+
+### 05 Jun 2026 (noche) — Deploy QA + ESLint fix useDismissableDropdown
+
+**Archivos modificados:**
+- `frontend/src/hooks/useDismissableDropdown.ts` — eliminado patrón `minWidthRef.current = minWidth` durante render (violaba nueva regla ESLint `react-hooks/refs`). Removido `useRef` por completo; `minWidth` se usa directamente en el efecto + dep array.
+- `frontend/.env.production` — actualizado `VITE_API_SECRET_KEY` a clave QA para build de deploy.
+
+**Incidentes / fixes de entorno:**
+- `pnpm run build` en frontend fallaba con `ERR_PNPM_IGNORED_BUILDS: esbuild@0.27.7`. Fix: `pnpm approve-builds --all` aprueba el post-install de esbuild. Solo necesita hacerse una vez por máquina.
+- `deploy.sh` usa `npm run build` para frontend — está desactualizado. El frontend usa **pnpm**. Pendiente corregirlo.
+- `rsync` no disponible en Windows; `scp` disponible pero QA no es alcanzable directamente desde Windows (requiere llave privada). Deploy manual via WinSCP + SSH.
+
+**Verificaciones:**
+- Backend tests: 81/81 ✅ (subió de 67 a 81 — tests adicionales de sesiones anteriores)
+- Backend tsc: sin errores ✅
+- Frontend tsc: sin errores ✅
+- Frontend ESLint: 0 errores tras fix ✅
+- Frontend build: 811 kB JS · 43 kB CSS (warning chunk size conocido) ✅
+- Backend NO modificado en esta sesión ni en ningún item del PRD Architecture Deepening (todo el trabajo del PRD fue exclusivamente frontend)
+
+---
+
+### 05 Jun 2026 (tarde) — R3: useFilters + Refresh Fix Unificado
+
+**Archivos creados:**
+- `frontend/src/hooks/useFilters.ts` — nuevo hook que encapsula: `ubicod`, `branchName`, `timeRange`/`timeRangeLabel`, `products`, `filtersOpen` (con localStorage), `refreshKey`, `activeFilterCount`. Expone `{ filters, refreshKey, setUbicod, setBranchName, setTimeRange, setProducts, toggleFilters, activeFilterCount, refresh }`.
+
+**Archivos modificados:**
+- `frontend/src/components/Dashboard.tsx` — reemplaza 7 `useState` + 2 `useMemo` + 2 funciones locales con `useFilters(initialUbicod, refDate)`. Dashboard ahora es componente de layout puro. `getDefaultTimeRange` movida al hook.
+- `frontend/src/components/charts/TopProductsChart.tsx` — agrega prop `refreshKey: number` incluido en deps de `useFetchChartData`. Elimina dependencia de `key=` para remount.
+- `frontend/src/components/charts/SalesComparisonChart.tsx` — ídem.
+
+**Decisiones:**
+- Refresh unificado: los 3 data sources usan el mismo mecanismo (deps array con `refreshKey`). Antes TopProducts y SalesComparison usaban `key={refreshKey}` → remount; ahora todos pasan `refreshKey` como dep → re-fetch sin perder estado de componente.
+- `setTimeRange(range, label)` en el hook combina los dos setters previos en uno, simplificando el `onChange` de `TimeRangeFilter`.
+- PRD Architecture Deepening completado: R1 ✅ R2 ✅ R3 ✅ R4 ✅ R5 ✅
+
+**Verificación:** `tsc -b --noEmit` y ESLint sin errores.
+
+---
+
+## Decisiones de diseño tomadas
 
 ### `refDate` como nombre del parámetro URI
 - Descartados: `dwphorakey` (nombre de columna DB — mezcla capas), `asOf` (término financiero)
@@ -274,9 +518,6 @@ Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 ### `realNow` capturado una sola vez por request
 - Garantiza que `isToday` y `currentHour` hablan del mismo instante
 
-### `toDayKey` local en `salesHistory.ts`
-- No estaba exportada en `salesComparison.ts` — **decisión pendiente**: mover a `dateUtils.ts`
-
 ### Validación de fecha de corte solo en frontend para el picker
 - El backend no valida que `to <= refDate` — riesgo: cliente API directo puede saltear — pendiente
 
@@ -292,21 +533,75 @@ Después: hard-refresh en el browser (`Ctrl+Shift+R`).
 - `react-datepicker` con `dateFormat="dd/MM/yyyy"` fuerza el formato independiente del browser
 - Trade-off: dependencia extra (~800KB en bundle total) pero UX correcta para LATAM
 
-### `showPopperArrow={false}` sobre CSS hack
-- Usar prop nativo del componente es preferible a `.react-datepicker__triangle { display: none }`
-- Si el componente cambia la clase interna en una versión futura, el prop sigue funcionando
-
 ### `:focus-visible` sobre `:focus` para inputs
 - `:focus` muestra ring en click de mouse (innecesario) — `:focus-visible` solo con teclado
 - Recomendación de Web Interface Guidelines (Vercel)
 
-### `::before` gradient line en el popup del datepicker
-- Mismo patrón visual que `.card` y `.kpi-card` para cohesión con el ocean theme
-- Decisión validada contra frontend-design skill
+---
+
+## Pendientes para próximas sesiones
+
+### 🔴 Alta prioridad — bloqueados esperando acceso
+
+**P27 — Port forwarding TCP 5432 en NAT QA CONF para conexión SV Sandbox→DB**
+- **Bloqueado** — necesita que el admin del gateway/router de QA CONF agregue la regla
+- Contexto: SV Sandbox y QA CONF DB están en redes distintas. NAT compartido (5 servidores) en IP pública `38.7.200.210`. Sin port forwarding para 5432, `ECONNREFUSED` garantizado.
+- **Mensaje para el admin:**
+  > "Necesito port forwarding en el gateway/router: TCP puerto 5432 externo → IP interna del servidor DB puerto 5432. El origen será la IP pública del servidor SV Sandbox."
+- **Opcional (recomendado):** restringir el forwarding solo a la IP pública del SV Sandbox para mayor seguridad
+- **Una vez habilitado:** el `.env` ya tiene `DB_SSL=true` + `DATABASE_URL` con `?sslmode=require`, y `db.ts` ya tiene el SSL config correcto → debería conectar sin más cambios de código
+
+**P26 — Configurar SSL nativo PostgreSQL en servidor prod DB**
+- **Bloqueado** — necesita acceso SSH al servidor de base de datos (coordinado con compañero)
+- Ver pasos completos en `Recursos docs/Playbook-PostgreSQL-Produccion.md`
+- Resumen: habilitar `ssl = on` en `postgresql.conf`, copiar `server.crt` al servidor app, configurar `DB_SSL_CA` en `.env`, agregar línea `hostssl` en `pg_hba.conf`, regla de firewall para IP del app server
+- Prerequisito para salida a producción con servidores separados
 
 ---
 
-## 3. Conceptos clave aprendidos
+### 🟡 Media prioridad (pospuestos / bloqueados)
+
+**P7 — HTTPS con Certbot**
+- **Pospuesto** — riesgo alto: Certbot modifica Nginx externo (solo 1 persona tiene acceso), panel embedded de la empresa puede romperse si fuerza HTTP→HTTPS redirect.
+- Prerequisitos: coordinar con compañero del Nginx externo + confirmar que el panel soporta HTTPS.
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d pos16.qa.andespos.com
+```
+
+Actualizar `FRONTEND_URL` en `.env`. Aplicar con `pm2 restart --update-env`.
+
+**P9 — Token Tomcat** — coordinar formato con dev senior · implementar en `auth.ts`
+
+### 🟢 Baja prioridad
+
+**P28 — Corregir `deploy.sh`**: línea 21 usa `npm run build` para frontend — debería ser `pnpm run build`. Riesgo bajo (solo afecta si se usa `deploy.sh` desde una máquina Linux).
+
+**P11 — Evaluar `COBERTURA_OBJETIVO`** — actualmente 80% en TopProductsChart · validar con el negocio
+
+---
+
+## Formato de datos — Base de Datos
+
+```
+dwphorakey bigint = YYYYMMDDHH
+  Día  = dwphorakey / 100   → YYYYMMDD
+  Hora = dwphorakey % 100   → HH
+
+Columnas CHAR tienen trailing spaces → siempre TRIM()
+Toda query lleva WHERE dwpempkey = $1 (multi-empresa)
+Esquema: pos2407
+
+SalesComparison — hourCondition:
+  Solo se aplica cuando isToday === true.
+  isToday compara anchorDayKey contra toDayKey(new Date()) REAL — no contra refDate.
+  Períodos históricos (ayer, semana, mes, año) muestran el día completo.
+```
+
+---
+
+## Conceptos clave aprendidos
 
 ### Identificador ≠ Presentación (Recharts XAxis)
 `dataKey` del `XAxis` debe ser único. Lo que el usuario ve es responsabilidad de `tickFormatter` y `CustomTooltip`. Usar el string de display como identificador causó colisiones en rangos largos.
@@ -341,6 +636,15 @@ Nginx compara el header `Host`. En arquitecturas con proxy, el `Host` que llega 
 ### PM2 cachea variables de entorno
 `pm2 restart` sin flags usa las variables del inicio original. Siempre `--update-env` después de cambiar `.env`.
 
+### `pnpm approve-builds` requerido para esbuild en frontend
+Al migrar el frontend a pnpm o en una máquina nueva, `pnpm run build` puede fallar con `ERR_PNPM_IGNORED_BUILDS: esbuild@0.27.7`. pnpm 9+ bloquea post-install scripts por seguridad. Fix: `pnpm approve-builds --all` (solo una vez por máquina). Queda registrado en `pnpm-lock.yaml`.
+
+### `vite build` carga `.env.production` sobre `.env`
+Para QA deploy: `frontend/.env.production` debe tener la clave QA. Si tiene la clave prod, el bundle quedará con la clave incorrecta → 401 en todos los requests del QA. Verificar siempre qué clave está en `.env.production` antes de buildear.
+
+### `key=` para forzar remount vs dep en `useFetchChartData`
+Usar `key={refreshKey}` en un componente que llama `useFetchChartData` causa remount completo: se pierde estado interno, animaciones, etc. Preferir pasar `refreshKey` como prop e incluirlo en el array de deps — re-fetch sin pérdida de estado. Diferencia importante cuando el componente tiene estado propio significativo (e.g. animaciones Recharts).
+
 ### `useEffect` dependency arrays — regla exhaustiva
 Si un valor se usa dentro del `useEffect` (directa o indirectamente vía fetch params), debe estar en el dependency array. Omitirlo causa datos stale cuando ese valor cambia. `eslint-plugin-react-hooks` detecta esto automáticamente con la regla `exhaustive-deps`.
 
@@ -367,59 +671,41 @@ Las variables `VITE_API_SECRET_KEY` se resuelven durante `npm run build`, no al 
 
 ---
 
-## 4. Bugs encontrados y resueltos
+## Lecciones aprendidas — NestJS + TypeORM + Tests
 
-> Catálogo completo en `Recursos docs/FAQ Bugs Comandos diarios.md` — incluye síntoma, causa, solución y comandos de diagnóstico para cada bug histórico (Recharts, Nginx, PM2, dark mode, PostgreSQL, refDate).
+### `ChartCacheInterceptor` debe ser provider real en tests (no mock)
+Si se mockea el interceptor, los tests no ejercitan el path real. Incluirlo como provider en `TestingModule`. Usar `empkey` únicos por test para evitar cache hits entre tests.
 
----
+### Patrón tests de controllers NestJS con Supertest
+Crear `TestingModule` con el módulo bajo prueba + providers reales. Usar `app.init()` en `beforeAll` y `app.close()` en `afterAll`. El `ValidationPipe` debe registrarse igual que en `main.ts`.
 
-## 5. Pendientes para próximas sesiones
+### PostgreSQL rechaza parámetros no referenciados en el SQL
+Si un `$N` está en el array de `params` pero no aparece en la query, PostgreSQL retorna "no se pudo determinar el tipo del parámetro $N". Solución: solo pushear params que se van a usar. En salesComparison, `currentHour` solo se pushea si `needsHourFilter === true`.
 
-### 🟡 Media prioridad (pospuestos / bloqueados)
+### node-postgres: preferir `IN ($1, $2)` sobre `ANY($1::type[])`
+La FAQ de node-postgres muestra dos formas de manejar arrays. `= ANY($1)` con array anidado requiere que pg serialice el array como string literal, y el cast explícito `::bigint[]` puede fallar. `IN ($1, $2, $3)` con params planos es más seguro y explícito. Verificado contra context7.
 
-**P7 — HTTPS con Certbot**
-- **Pospuesto** — riesgo alto: Certbot modifica Nginx externo (solo 1 persona tiene acceso), panel embedded de la empresa puede romperse si fuerza HTTP→HTTPS redirect.
-- Prerequisitos: coordinar con compañero del Nginx externo + confirmar que el panel soporta HTTPS.
+### `ValidationPipe` de NestJS requiere `class-validator` + `class-transformer` como deps de producción
+Si se usa `app.useGlobalPipes(new ValidationPipe(...))` en `main.ts`, ambos paquetes deben estar en `dependencies` (no `devDependencies`). Sin ellos, el app arranca pero loguea error y la validación no funciona.
 
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d pos16.qa.andespos.com
-```
-
-Actualizar `FRONTEND_URL` en `.env`. Aplicar con `pm2 restart --update-env`.
-
-**P9 — Token Tomcat** — coordinar formato con dev senior · implementar en `auth.ts`
-
-### 🟢 Baja prioridad
-
-**P11 — Evaluar `COBERTURA_OBJETIVO`** — actualmente 80% en TopProductsChart · validar con el negocio
+### `pnpm install --prod` requiere `package.json` + `pnpm-lock.yaml` en el servidor
+Transferir solo `dist/` no es suficiente. El servidor necesita `package.json` y `pnpm-lock.yaml` para que `pnpm install` sepa qué instalar. Agregar ambos al procedimiento de WinSCP.
 
 ---
 
----
+## Lecciones aprendidas — Redes / Infraestructura
 
-## Lecciones aprendidas — Recharts 3 (TypeScript)
+### `ECONNREFUSED` con PostgreSQL escuchando ≠ problema de código
+Si `ss -tlnp | grep 5432` muestra `*:5432` y ufw/iptables están inactivos pero igual hay `ECONNREFUSED`, el problema está en la capa de red antes del servidor: NAT sin port forwarding. `listen_addresses = '*'` y `hba.conf` son configuración de PostgreSQL — solo aplican cuando el paquete TCP llega al servidor. Si hay un NAT/router en el medio sin regla para el puerto, el paquete nunca llega.
 
-**`TooltipProps` en Recharts 3 omite `active`, `payload` y `label`**
-En v3, `TooltipProps<TValue, TName>` hace `Omit<..., 'active' | 'payload' | 'label' | ...>` — esas props son "leídas del contexto" y no están en el tipo. Usar una interfaz local simple: `interface TooltipContent { active?: boolean; payload?: Array<{ value: number }>; label?: string }`. No importar `TooltipProps` ni `TooltipContentProps` para componentes custom.
+### NAT con múltiples servidores requiere port forwarding explícito por puerto
+Si N servidores comparten una IP pública, el router no sabe a cuál enviar cada conexión entrante. Debe existir una regla por puerto: `TCP <puerto> externo → IP_interna_servidor:puerto`. HTTP (80/443) suele estar configurado; puertos de bases de datos (5432, 3306) raramente lo están por defecto.
 
-**`CustomizedAxisTick` — patrón oficial con `...args`**
-Recharts inyecta las props (`x`, `y`, `payload`) en runtime. TypeScript no lo sabe al escribir `<CustomizedAxisTick />` (ve `{}`). Patrón oficial de docs: `(...args: any[]) => { const { x, y, payload } = args[0] as { x: number; y: number; payload: { value: number } }; }`. El `any` está acotado al boundary con Recharts; el interior del componente queda tipado.
+### `ping dominio` resuelve la IP del NAT, no necesariamente la del servidor destino
+El dominio apunta al NAT. Si hay múltiples servidores detrás, el ping confirma que el dominio resuelve correctamente pero no dice nada sobre conectividad al servidor específico. La IP que aparece en DevTools "Remote Address" del browser es la del servidor que respondió HTTP — puede ser diferente a la del servidor DB.
 
-**`content={<CustomTooltip />}` es el patrón correcto**
-No usar render functions (`content={(props) => <CustomTooltip {...props} />}`) — TypeScript falla por contravarianza de genéricos. El JSX element directo funciona cuando el componente tiene una interfaz local simple (no importada de Recharts).
-
-**SIEMPRE consultar context7 antes de iterar con tipos de librerías externas**
-Recharts 3 cambió sus tipos significativamente respecto a v2. Sin consultar docs, se itera a ciegas. Regla: primer error de tipos de librería externa → abrir context7, no razonar desde memoria.
-
-**`tsconfig.json` backend debe excluir archivos de test**
-`"exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test/**/*"]` — sin esto, `tsc` compila los tests en el build de producción y falla si usan features como `top-level await` incompatibles con el `module: commonjs` de producción.
-
-**`frontend/.env.production` separa keys por entorno**
-Vite carga `.env.production` solo en `npm run build`, `.env` en dev. Crear `.env.production` con la key del servidor destino evita el riesgo de buildear con key incorrecta y tener 401 en producción.
-
-**`npm install --omit=dev` requiere `package.json` en el servidor**
-Transferir solo `dist/` no es suficiente. El servidor necesita `package.json` (y `package-lock.json` para builds deterministas) para que `npm install` sepa qué instalar. Agregar ambos archivos al procedimiento de WinSCP.
+### Firewall del OS vs NAT gateway son capas independientes
+`ufw inactive` + `iptables sin reglas` solo descarta el firewall del OS del servidor destino. No descarta firewalls en el router/gateway, en cloud security groups, o en reglas de red del proveedor. Siempre explorar todas las capas cuando hay `ECONNREFUSED`.
 
 ---
 
@@ -428,141 +714,63 @@ Transferir solo `dist/` no es suficiente. El servidor necesita `package.json` (y
 | Concepto | Regla |
 |----------|-------|
 | `alias` vs `proxy_pass` | `alias` = archivos locales. `proxy_pass` = otro servidor |
-| `server_name` | Filtro activo — debe incluir el dominio externo |
+| `server_name` | Filtro activo — debe incluir el dominio externo. En servidores nuevos con dominio distinto a la IP, siempre agregar el FQDN al `server_name` o matchea `default_server`. |
 | `sites-available` vs `sites-enabled` | available = archivo real (NUNCA borrar). enabled = symlink |
 | Headers custom en proxy | Nginx elimina headers no estándar — siempre repassar con `proxy_set_header` |
 | `default_server` | Solo un bloque puede tenerlo por puerto |
 | PM2 y variables de entorno | `pm2 restart --update-env` para recargar variables desde .env |
-| Frontend build en servidor | Requiere `npm install` completo (con devDeps) antes de `npm run build` |
+| Frontend build en servidor | Construir local y subir solo `dist/` — nunca buildear backend/frontend en el servidor |
 | Order de locations | Location de API debe ir antes que el del frontend |
 
 ---
 
-## Lecciones aprendidas — Frontend (Recharts)
+## Contexto crítico que NO está en el código
 
-**Identificador ≠ Presentación**
-`dataKey` del `XAxis` debe ser único. `tickFormatter` y `CustomTooltip` son para display.
-
-**`tick` custom vs `tickFormatter`**
-Mutuamente excluyentes. Con `tick={<CustomizedAxisTick />}`, transformar con `payload.value`.
-
-**Distribuciones de cola larga**
-`topN` fijo no escala. Usar cobertura acumulada: `COBERTURA_OBJETIVO=0.80`, `MAX_SLICES=8`.
-
----
-
-## Lecciones aprendidas — Frontend (react-datepicker)
-
-**`dateFormat` fuerza el formato de display**
-`input[type="date"]` delega al browser. `react-datepicker` con `dateFormat="dd/MM/yyyy"` lo fuerza independiente del locale del OS.
-
-**Locale con `date-fns`**
-`registerLocale('es', es)` a nivel módulo (fuera del componente). `locale="es"` en cada `<DatePicker>`. Los meses salen en lowercase → usar `text-transform: capitalize` en CSS.
-
-**`showPopperArrow={false}` sobre CSS hack**
-Prop nativo del componente. Más resiliente que ocultar con CSS la clase interna `.react-datepicker__triangle`.
-
-**Theming con CSS custom properties**
-Override de `.react-datepicker*` clases usando `var(--bg-surface)`, `var(--border-card)`, etc. Adapta dark/light automáticamente sin JavaScript.
-
-**`spellCheck` no es prop de `<DatePicker>`**
-A diferencia de `<input>`, el componente no expone `spellCheck`. Detectado por TypeScript strict mode.
-
----
-
-## Lecciones aprendidas — Frontend (AbortController)
-
-**AbortController en `useEffect` — patrón estándar para fetch cancelable**
-Crear `new AbortController()` al inicio del efecto, pasar `controller.signal` al `fetch()`, y llamar `controller.abort()` en la cleanup function. Cuando React re-ejecuta el efecto (cambio de deps), la cleanup aborta el fetch pendiente antes de lanzar uno nuevo.
-
-**`isAbortError` como guard en `.catch()`**
-`fetch()` lanza `DOMException` con `name === 'AbortError'` cuando se aborta. Sin el guard, el `.catch` trataría la cancelación intencional como un error real y mostraría mensaje de error al usuario. El patrón correcto: `.catch(e => { if (!isAbortError(e)) handleError(e) })`.
-
-**Requests `(cancelled)` en DevTools son señal de éxito, no de error**
-Chrome muestra `(cancelled)` con `0 kB` para fetches abortados. Esto confirma que AbortController está funcionando — el browser cortó la conexión antes de recibir respuesta completa. Solo la última request (la vigente) completa con datos.
-
----
-
-## Lecciones aprendidas — Frontend (TypeScript + Recharts)
-
-**`TooltipProps<ValueType, NameType>` para custom tooltips de Recharts**
-Recharts exporta `TooltipProps<TValue, TName>` (importar con `import type { TooltipProps } from 'recharts'`). Elimina el `any` en el prop `content` de `<Tooltip>`. Usar `TooltipProps<number, number>` cuando label es un dayKey numérico, `TooltipProps<number, string>` cuando es texto (e.g. "Hoy", "Ayer").
-
-**Interface inline para tick components de XAxis**
-Recharts no exporta un tipo público para los props del tick custom. Solución: interface local `{ x: number; y: number; payload: { value: T } }`. Más simple y portable que intentar importar tipos internos de recharts.
-
-**`useReducer` en lugar de múltiples `useState` en `useEffect`**
-Cuando un `useEffect` llama 3+ setters distintos (`setLoading`, `setData`, `setError`), cada setter dispara un re-render separado. `useReducer` con `dispatch` atómico es más correcto: definir acciones FETCH_START / FETCH_SUCCESS / FETCH_ERROR → una sola actualización por fase. Además elimina el lint warning `set-state-in-effect`. Patrón ya establecido en Dashboard.tsx — replicar en cualquier chart que tenga su propio fetch.
-
----
-
-## Lecciones aprendidas — Tests (Vitest)
-
-**`vi.importActual` para testear módulos mockeados en `setupFiles`**
-Si `setupFiles` mockea un módulo globalmente (e.g. `cache.ts`), todos los tests solo ven el mock. Para testear la implementación real del módulo: `const { cacheMiddleware } = await vi.importActual<typeof import('./cache')>('./cache')`. Llamar en `beforeAll`. Esencial para tests unitarios de middlewares que el resto del suite necesita desactivados.
-
-**Patrón helper `mockRes()` para tests de middlewares Express**
-Para testear funciones que reciben `(req, res, next)` sin Supertest: crear mocks mínimos con `vi.fn()`. El `res.status` debe retornar `res` para permitir `res.status(400).json(...)`. Pattern: `res.status = vi.fn().mockReturnValue(res); res.json = vi.fn().mockReturnValue(res);`. Verificar que `next` no fue llamado cuando se espera un 4xx.
-
----
-
-## Lecciones aprendidas — Backend (PostgreSQL + node-postgres)
-
-**PostgreSQL rechaza parámetros no referenciados en el SQL**
-Si un `$N` está en el array de `params` pero no aparece en la query, PostgreSQL retorna "no se pudo determinar el tipo del parámetro $N". Solución: solo pushear params que se van a usar. En salesComparison, `currentHour` solo se pushea si `needsHourFilter === true`.
-
-**node-postgres: preferir `IN ($1, $2)` sobre `ANY($1::type[])`**
-La FAQ de node-postgres muestra dos formas de manejar arrays. `= ANY($1)` con array anidado requiere que pg serialice el array como string literal, y el cast explícito `::bigint[]` puede fallar. `IN ($1, $2, $3)` con params planos es más seguro y explícito. Verificado contra context7.
-
-**Siempre correr tests antes de entregar código**
-El bug del parámetro huérfano solo se manifestaba con `refDate` pasado (no hoy). Sin tests automatizados, pasó a producción local. Con el test `pool.query recibe parámetros sin huecos`, el bug se detecta inmediatamente.
-
-**Cache middleware con `res.json` override es transparente**
-Override de `res.json` en Express 5 funciona correctamente (verificado con context7). Solo cachear 2xx, nunca errores. Limpieza periódica del Map previene memory leak. Desactivar con mock passthrough en tests.
-
----
-
-## Lecciones aprendidas — Frontend (Dark Mode y contraste)
-
-**`--text-label` y `--chart-axis` dark mode deben ser ≥5:1 contra #060b18**
-Los colores "de relleno" del dark mode de Tailwind (slate-700 #334155, slate-600 #475569) tienen ratio de contraste de 2–3:1 contra el fondo dark `#060b18`. No son legibles como texto. Para labels y ejes, usar #718096 (slate-500, ratio 5.0:1) como mínimo.
-
-**Colores hardcodeados en subcomponentes rompen el theming**
-`CustomizedAxisTick` con `fill="#6b7280"` hardcodeado ignora ThemeContext — en dark mode queda con un azul grisáceo del light mode, en light mode también estático. Siempre usar `const { colors } = useTheme()` dentro del componente y referenciar `colors.chartAxis`. Aplica a cualquier subcomponente que renderice texto de ejes o labels con Recharts.
-
-**Light mode y dark mode deben definirse en dos lugares separados**
-Los valores de colores Recharts viven en `ThemeContext.tsx` (`DARK_COLORS`/`LIGHT_COLORS`) **y** en `index.css` (`:root` dark / `[data-theme="light"]`). Un cambio de contraste requiere actualizar ambos archivos para que CSS variables y ThemeContext queden sincronizados.
-
-**Diagnóstico rápido de contraste WCAG**
-Ratios objetivo: texto normal ≥4.5:1 (AA), texto grande ≥3:1 (AA), decorativo ≥3:1 (trade-off aceptable). Calcular con: `(L1 + 0.05) / (L2 + 0.05)` donde `L1` = luminancia mayor. Para fondo `#060b18` (L≈0.002), cualquier color con L≥0.11 alcanza 4.5:1. El blue-gray del ocean theme #718096 tiene L≈0.19 → ratio 5.0:1 ✅.
-
-**bg-card (~#0c1a35, L≈0.011) es más oscuro que bg-page y exige colores más claros**
-`--text-muted` (#5a7a96) da 4.5:1 contra bg-page pero solo 3.8:1 contra bg-card. Para texto informacional sobre cards, usar `--text-mid` (#94a3b8, 6.7:1) o verificar que el color pase 4.5:1 contra L=0.011. Regla: necesitás L≥0.225 para pasar 4.5:1 contra bg-card.
-
-**Separar fill decorativo de color de texto en charts**
-`COLOR_OTROS = '#4b5563'` da 2.3:1 sobre bg-card — ilegible para texto. Solución: mantener el hex oscuro para el fill del pie (decorativo, 3:1 no requerido en shapes), pero para texto de leyenda usar `--text-muted` y para labels externos `--text-mid`. No reutilizar el color de fill directamente como `style={{ color }}` si ese color es oscuro.
-
-**Tooltip bg (#0d1e3a, L≈0.012) necesita colores más claros que bg-page**
-Labels de fecha/nombre dentro del tooltip deben usar `--text-mid`, no `--text-muted`. El fondo del tooltip es ligeramente más oscuro que bg-card, así que los mismos colores que fallan en cards también fallan en tooltips.
-
----
-
-## Formato de datos — Base de Datos
-
-```
-dwphorakey bigint = YYYYMMDDHH
-  Día  = dwphorakey / 100   → YYYYMMDD
-  Hora = dwphorakey % 100   → HH
-
-Columnas CHAR tienen trailing spaces → siempre TRIM()
-Toda query lleva WHERE dwpempkey = $1 (multi-empresa)
-Esquema: pos2407
-
-SalesComparison — hourCondition:
-  Solo se aplica cuando isToday === true.
-  isToday compara anchorDayKey contra toDayKey(new Date()) REAL — no contra refDate.
-  Períodos históricos (ayer, semana, mes, año) muestran el día completo.
-```
+- `refDate` llega como `YYYYMMDD` sin componente horario — `getHours()` siempre retorna `0`
+- `isToday` compara contra `new Date()` real, **no contra `refDate`** — esto es intencional
+- `effectiveTo` en `salesHistory.ts` siempre tiene valor — no es opcional
+- Sin `refDate` en la URI, la app se comporta exactamente igual que antes — parámetro aditivo no destructivo
+- **Dashboard owns `fetchSalesHistory`** — KPICards y SalesHistoryChart reciben data/loading/error como props, NO hacen fetch propio
+- **salesComparison usa 1 query consolidada** con `SUM(CASE WHEN ...)` + `WHERE IN` — NO `Promise.all` con 5 queries
+- **`needsHourFilter`** controla si `currentHour` se pushea a params — NUNCA pushear params que no se referencian en el SQL
+- **NO usar `ANY($N::bigint[])` con TypeORM raw** — usar `IN ($a, $b, $c)` con params individuales
+- **`ChartCacheInterceptor`** en `backend/src/common/` — TTL 60s, solo 2xx, key = URL completa
+- **Rate limiter** ThrottlerModule global — 300 req/15min
+- **Tests:** `cd backend && pnpm test` — 67 tests, Jest + Supertest
+- **`ApiKeyGuard`** en `src/common/` valida `x-api-key` header contra `API_SECRET_KEY`
+- **AbortController en los 3 fetches de charts** — `client.ts` acepta `AbortSignal`, cada `useEffect` crea controller + cleanup `abort()`. `isAbortError()` en `client.ts` distingue cancelaciones de errores reales. Requests `(cancelled)` en DevTools = comportamiento esperado.
+- **`useReducer` en SalesComparisonChart y TopProductsChart** — ya NO usan `useState` individual para loading/data/error. Usan `useFetchChartData` hook con `useReducer` interno (acciones FETCH_START/SUCCESS/ERROR). Al agregar fetches nuevos, seguir este patrón.
+- **`useFilters(initialUbicod, refDate)`** en `frontend/src/hooks/useFilters.ts` — encapsula TODO el estado de filtros. Dashboard.tsx destructura `{ filters, refreshKey, setUbicod, setBranchName, setTimeRange, setProducts, toggleFilters, activeFilterCount, refresh }`. El `setTimeRange(range, label)` del hook reemplaza dos setters separados.
+- **`refreshKey` en TopProductsChart y SalesComparisonChart** — ambos aceptan `refreshKey: number` como prop e incluyen en deps de `useFetchChartData`. NO usar `key={refreshKey}` para estos componentes.
+- **`TooltipProps` de Recharts** — importar con `import type { TooltipProps } from 'recharts'`. `TooltipProps<number, number>` para SalesHistoryChart (label = dayKey numérico), `TooltipProps<number, string>` para SalesComparisonChart (label = texto). No usar `any`.
+- **PM2 `--cwd` es obligatorio en pos-prod-sim** — `pm2 start dist/main.js --name pos-backend --cwd /var/www/pos-dashboard/backend`. Sin `--cwd`, PM2 usa el home del usuario como working directory y dotenv no encuentra el `.env` → crash con "DATABASE_URL no configurada"
+- **PM2 startup en pos-prod-sim**: usar `pm2 startup systemd -u dashboardapp --hp /home/dashboardapp` directamente como root (sin `sudo env` wrapper — sudo no está instalado en esta VM)
+- **pos-prod-sim reboot**: el backend sobrevive reboot de VM siempre que PuTTY en Windows esté activo. Si PuTTY se cierra, PM2 arranca pos-backend pero falla al conectar a la DB silenciosamente.
+- **Arquitectura prod confirmada (21 Abr)**: servidor app y servidor DB serán separados, ambos con IPs públicas. Tráfico Node.js → PostgreSQL cruza internet → SSL obligatorio con verificación de certificado.
+- **`DB_SSL=true` nueva variable de entorno**: activa SSL en `db.ts` sin importar `NODE_ENV`. Permite conectar a DBs SSL desde entornos QA/sandbox sin cambiar NODE_ENV a production. Agregar al `.env` junto con `?sslmode=require` en la `DATABASE_URL`. Sin cert, usa `rejectUnauthorized: false` (válido en red privada/QA).
+- **`DB_SSL_CA` nueva variable de entorno**: path al `server.crt` del servidor Postgres. Si está configurada, `db.ts` usa `rejectUnauthorized: true` + el cert. Si no está, hace fallback a `rejectUnauthorized: false` (solo para red privada). Para producción con IPs públicas SIEMPRE configurar esta variable.
+- **Graceful shutdown en `index.ts`**: `SIGTERM`/`SIGINT` llaman `pool.end()` antes de salir. Crítico para que `pm2 restart` no corte queries en vuelo. Los handlers están dentro del bloque `NODE_ENV !== 'test'`.
+- **`/api/health` endpoint**: devuelve `{ status, db: { total, idle, waiting }, uptime }`. Está protegido por `authMiddleware`. Usar para diagnosticar si el pool está saturado (`waiting > 0` sostenido = pool undersized).
+- **`min: 2` en el pool**: mantiene 2 conexiones warm. Evita cold-start latency en el primer request post-deploy.
+- **SSL nativo de Postgres en Debian**: el paquete `postgresql` genera `server.crt` y `server.key` en `/etc/postgresql/XX/main/` solo si `ssl = on` en `postgresql.conf`. Si el cert no existe, habilitar SSL primero (`ssl = on` + `pg_ctlcluster XX main reload`).
+- **`hostssl` en `pg_hba.conf`**: a diferencia de `host` (acepta con o sin SSL), `hostssl` rechaza conexiones sin SSL a nivel Postgres. Usar para el usuario de la app del dashboard. No tocar las líneas existentes de los usuarios de Tomcat.
+- **Dark mode contraste validado (14 Abr)**: `--text-very-muted` es ahora `#6e8fa8` (L≈0.258, ratio ~5:1 bg-card). `badge-neutral` usa `#8399b0`. Tooltips y lista de comparación usan `--text-mid`. Leyenda "Otros" en TopProducts: fill del pie sigue en `#4b5563`, texto usa `--text-muted`/`--text-mid`.
+- **Servidor QA limpio (14 Abr)**: frontend en QA solo tiene `dist/`. Backend solo tiene `dist/`, `node_modules/`, `logs/`, `package.json`, `pnpm-lock.yaml`, `.env`. No hay `src/` en ninguno.
+- **Playbook de producción**: `Recursos docs/Playbook-Produccion.md`. Servidor prod: Debian 12, Tomcat en 8080 (no tocar), PostgreSQL local, Nginx en 80, Nginx externo delante. `API_SECRET_KEY` prod: `0c8ed4477e54bac978f5344182486283401ac21c44c6d40ee92d4ded4442bfeb`. Pendiente completar: dominio prod, IP prod, credenciales DB, coordinar Nginx externo con compañero.
+- **Para el deploy a prod**: instalar Node 22 + PM2 + Nginx + crear `dashboardapp`. El `--cwd /var/www/pos-dashboard/backend` sigue siendo obligatorio en el `pm2 start`. El compañero del Nginx externo debe agregar `proxy_set_header x-api-key $http_x_api_key` — sin esto, 401 en todos los endpoints desde el dominio público.
+- **Servidores sandbox (21 Abr)**: pos16.sb.andespos.com (al menos 2 servidores app). Conectan a DB QA. PM2 como `dashboardapp`. Nginx config usaba `server_name 10.50.10.23 localhost` — no incluía el FQDN público → requests al dominio matcheaban `default_server` → 404. Fix: agregar el dominio a `server_name`. Verificar siempre `server_name` al configurar un servidor nuevo con dominio externo.
+- **`frontend/.env.production` tiene clave QA** desde sesión 05 Jun noche — si se va a deployer a prod, restaurar a `0c8ed4477e54bac978f5344182486283401ac21c44c6d40ee92d4ded4442bfeb` antes del build.
+- **Tests backend: 99** (no 67/81) — 18 tests nuevos en sesión 08 Jun (top-categories: 11, params: 7).
+- **Al agregar un provider nuevo al ChartsController, actualizarlo en los 3 spec files existentes** — `top-products.controller.spec.ts`, `sales-history.controller.spec.ts`, `sales-comparison.controller.spec.ts` registran `ChartsController` directamente y deben listar TODOS sus providers.
+- **ParamsModule NO tiene dependencia de DatabaseModule ni de `@nestjs/axios`** — usa `fetch` nativo de Node 18+. No se agregó ninguna nueva dependencia para slice #7.
+- **`DashboardTopMode` en GeneXus**: `ValorParametroValor: "Producto"` → topMode `'1'` (top productos) · `"Categoria"` → topMode `'2'` (top categorías). URL sidecar: `?app=ServidorPOS&alcance=&parametro=DashboardTopMode&empkey={N}`. `PARAMS_APP_ID=ServidorPOS` confirmado 08 Jun 2026.
+- **`useAppParams` fetchea una sola vez al montar** — no re-fetcha en cambios de filtros. El topMode es estable durante la sesión (mismo empkey). Si la empresa cambia `DASHBOARD_TOP_MODE`, el usuario verá el cambio en la próxima carga del dashboard.
+- **TopCategoriesChart no recibe `products`** — el backend `top-categories` no acepta el parámetro `products` por diseño. El ProductFilter en Dashboard se deshabilita visualmente cuando topMode==='2'.
+- **`deploy.sh` usa `npm run build` para frontend — INCORRECTO** — usar `pnpm run build` directamente si se ejecuta desde Windows/VM con pnpm instalado.
+- **`ValorParametroValor` en GeneXus es texto semántico, no numérico** — el sidecar devuelve `"Producto"` y `"Categoria"`, no `'1'`/`'2'`. El mapeo a los valores internos del frontend (`'1'`/`'2'`) ocurre en `extractTopMode()`. No asumir que los parámetros GeneXus usan valores numéricos.
+- **`PARAMS_APP_ID` = nombre de la Aplicacion_Idl en GeneXus** — para este proyecto es `ServidorPOS`. Verificar con curl antes de setear en producción: `curl "http://localhost:3002/parameter/values?app=ServidorPOS&alcance=&parametro=DashboardTopMode&empkey=1136"`.
+- **El campo `parametro` en la URL del sidecar es case-sensitive** — `DashboardTopMode` no es lo mismo que `DASHBOARD_TOP_MODE`. Verificar siempre contra la definición real en GeneXus.
+- **`/api/health` desde browser → 401 es NORMAL**: el browser no envía `x-api-key` automáticamente. Solo el frontend (via `api/client.ts`) lo envía. Para probar el endpoint con curl, pasar `-H "x-api-key: <KEY>"` explícitamente.
 
 ---
 
@@ -574,16 +782,15 @@ SalesComparison — hourCondition:
 |----------------|-----------------|
 | Datepicker styling / bugs | `frontend/src/components/filters/TimeRangeFilter.tsx` + `frontend/src/index.css` |
 | Badge hora | `frontend/src/components/charts/SalesComparisonChart.tsx` |
-| `dateUtils.ts` | `backend/src/utils/dateUtils.ts` |
-| Validación backend | `backend/src/routes/salesHistory.ts`, `backend/src/middleware/validate.ts` |
+| Validación backend | `backend/src/common/` (guards, DTOs) |
 | Error en gráficos | `frontend/src/components/charts/[Chart].tsx` |
-| 401 / autenticación | `backend/src/middleware/auth.ts` + `frontend/src/api/client.ts` |
-| Logging / errores backend | `backend/src/logger.ts` + logs en `/var/www/pos-dashboard/backend/logs/` |
+| 401 / autenticación | `backend/src/common/api-key.guard.ts` + `frontend/src/api/client.ts` |
+| Logging / errores backend | `backend/src/main.ts` (winston config) + logs en `/var/www/pos-dashboard/backend/logs/` |
 | Crash frontend / pantalla blanca | `frontend/src/components/ErrorBoundary.tsx` + `frontend/src/App.tsx` |
 | Nginx no sirve | `cat /etc/nginx/sites-enabled/pos-dashboard` |
 | PM2 no levanta | `tail /var/www/pos-dashboard/backend/logs/error-*.log` o `pm2 logs pos-backend` |
-| Tests / nuevo endpoint | `backend/src/test/setup.ts` + cualquier `*.test.ts` en `src/routes/` o `src/middleware/` |
-| Cache backend | `backend/src/middleware/cache.ts` + `backend/src/index.ts` (líneas 56-58) |
+| Tests / nuevo endpoint | `backend/src/[módulo]/[módulo].controller.spec.ts` + `[módulo].service.ts` |
+| Cache backend | `backend/src/common/chart-cache.interceptor.ts` + `backend/src/charts/charts.module.ts` |
 
 ### Lo que NO debe asumir Claude
 
@@ -592,44 +799,8 @@ SalesComparison — hourCondition:
 - No asumir que Nginx recargó config sin `sudo systemctl reload nginx`
 - No diagnosticar sin ver el código real — siempre pedirlo primero
 
-### Contexto crítico que no está en el código
-
-- `refDate` llega como `YYYYMMDD` sin componente horario — `getHours()` siempre retorna `0`
-- `isToday` compara contra `new Date()` real, **no contra `refDate`** — esto es intencional
-- `effectiveTo` en `salesHistory.ts` siempre tiene valor — no es opcional
-- Sin `refDate` en la URI, la app se comporta exactamente igual que antes — parámetro aditivo no destructivo
-- `toDayKey` ahora en `backend/src/utils/dateUtils.ts` — importada por ambas rutas
-- `TimeRangeFilter` ahora usa `react-datepicker` con `date-fns` — ya no tiene `input[type="date"]`
-- CSS del datepicker está en `index.css` usando CSS custom properties — adapta dark/light automáticamente
-- `dateToKey()` y `keyToDate()` ahora en `frontend/src/utils/dateKeys.ts` — módulo compartido. `keyToDate` es defensiva (fallback a `new Date()` si input inválido)
-- `parseRefDateString()` en `utils/dateKeys.ts` reemplaza `isValidRefDate()` — valida YYYYMMDD y retorna `Date | null`
-- `formatDayKey(key, format)` en `utils/dateKeys.ts` — formatea YYYYMMDD en 3 formatos: 'short' (DD/MM), 'medium' (DD/MM/YY), 'long' (DD/MM/YYYY)
-- `formatCLP` y `formatCLPFull` ahora en `frontend/src/utils/format.ts` — `Intl.NumberFormat` hoisted a module scope
-- **Dashboard owns `fetchSalesHistory`** — KPICards y SalesHistoryChart reciben data/loading/error como props, NO hacen fetch propio
-- `<Clock />` es un componente aislado dentro de Dashboard.tsx — el interval de 60s solo re-renderiza el reloj
-- `ErrorBoundary.tsx` envuelve `<Dashboard>` — errores de render muestran UI de fallback, no pantalla blanca
-- Logging backend usa Winston (`backend/src/logger.ts`) — no `console.log`. Logs en `backend/logs/`
-- `db.ts` ya NO loguea `DATABASE_URL` — eliminado por riesgo de exposición de credenciales
-- **salesComparison usa 1 query consolidada** con `SUM(CASE WHEN ...)` + `WHERE IN` — NO `Promise.all` con 5 queries
-- **`needsHourFilter`** controla si `currentHour` se pushea a params — NUNCA pushear params que no se referencian en el SQL
-- **NO usar `ANY($N::bigint[])` con pg** — usar `IN ($a, $b, $c)` con params individuales (verificado con context7/node-postgres FAQ)
-- **Cache middleware** en `backend/src/middleware/cache.ts` — TTL 60s, solo 2xx, key = `req.originalUrl`
-- **Rate limiter** ahora 300 req/15min (era 100)
-- **Tests:** `cd backend && npm test` — 89 tests, 8 archivos, pool mockeado, cache desactivado en tests
-- **`index.ts` exporta `{ app }`** y no llama `listen()` en `NODE_ENV=test` — requisito de Supertest
-- **AbortController en los 3 fetches de charts** — `client.ts` acepta `AbortSignal`, cada `useEffect` crea controller + cleanup `abort()`. `isAbortError()` en `client.ts` distingue cancelaciones de errores reales. Requests `(cancelled)` en DevTools = comportamiento esperado.
-- **`useReducer` en SalesComparisonChart y TopProductsChart** — ya NO usan `useState` individual para loading/data/error. Usan `useReducer` con acciones FETCH_START/SUCCESS/ERROR. Al agregar fetches nuevos, seguir este patrón.
-- **`TooltipProps` de Recharts** — importar con `import type { TooltipProps } from 'recharts'`. `TooltipProps<number, number>` para SalesHistoryChart (label = dayKey numérico), `TooltipProps<number, string>` para SalesComparisonChart (label = texto). No usar `any`.
-- **PM2 `--cwd` es obligatorio en pos-prod-sim** — `pm2 start dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`. Sin `--cwd`, PM2 usa el home del usuario como working directory y dotenv no encuentra el `.env` → crash con "DATABASE_URL no configurada"
-- **PM2 startup en pos-prod-sim**: usar `pm2 startup systemd -u dashboardapp --hp /home/dashboardapp` directamente como root (sin `sudo env` wrapper — sudo no está instalado en esta VM)
-- **pos-prod-sim reboot**: el backend sobrevive reboot de VM siempre que PuTTY en Windows esté activo. Si PuTTY se cierra, PM2 arranca pos-backend pero falla al conectar a la DB silenciosamente.
-- **Dark mode contraste validado (14 Abr)**: `--text-very-muted` es ahora `#6e8fa8` (L≈0.258, ratio ~5:1 bg-card). `badge-neutral` usa `#8399b0`. Tooltips y lista de comparación usan `--text-mid`. Leyenda "Otros" en TopProducts: fill del pie sigue en `#4b5563`, texto usa `--text-muted`/`--text-mid`.
-- **Servidor QA limpio (14 Abr)**: frontend en QA solo tiene `dist/`, `package.json`, `package-lock.json` y configs de build. Backend solo tiene `dist/`, `node_modules/`, `logs/`, `package.json`, `package-lock.json`, `.env`. No hay `src/` en ninguno de los dos.
-- **Playbook de producción**: `Recursos docs/Playbook-Produccion.md`. Servidor prod: Debian 12, Tomcat en 8080 (no tocar), PostgreSQL local, Nginx en 80, Nginx externo delante. `API_SECRET_KEY` prod: `0c8ed4477e54bac978f5344182486283401ac21c44c6d40ee92d4ded4442bfeb`. Pendiente completar: dominio prod, IP prod, credenciales DB, coordinar Nginx externo con compañero.
-- **Para el deploy a prod**: instalar Node 22 + PM2 + Nginx + crear `dashboardapp`. El `--cwd /var/www/pos-dashboard/backend` sigue siendo obligatorio en el `pm2 start`. El compañero del Nginx externo debe agregar `proxy_set_header x-api-key $http_x_api_key` — sin esto, 401 en todos los endpoints desde el dominio público.
-
 ### Metodología del equipo
 - Developer aprende haciendo → concepto + pista antes de solución completa
 - Código completo solo si se pide explícitamente o tras varios intentos fallidos
-- Stack: React + Vite + TypeScript + Recharts + Tailwind · Express 5 + TypeScript + PostgreSQL · Nginx + PM2 + Debian 12
+- Stack: React + Vite + TypeScript + Recharts + Tailwind · NestJS 11 + TypeORM + TypeScript + PostgreSQL · Nginx + PM2 + Debian 12 · pnpm (backend)
 - Formato fechas en display: siempre `DD/MM/AA` o `DD/MM/AAAA`
