@@ -12,7 +12,8 @@
       "Read(//c/Users/DesaMato/.claude/**)",
       "Bash(for d:*)",
       "Bash(do echo:*)",
-      "Read(//c/Claude/POS Dashboard - test VM/POS Dashboard - Copy/$d/**)"
+      "Read(//c/Claude/POS Dashboard - test VM/POS Dashboard - Copy/$d/**)",
+      "WebSearch"
     ]
   }
 }

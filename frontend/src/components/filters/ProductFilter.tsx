@@ -2,61 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchProducts } from '../../api/client';
 import type { Product } from '../../api/client';
+import { useDismissableDropdown } from '../../hooks/useDismissableDropdown';
 
 interface Props {
   empkey: string;
   onChange: (productKeys: number[] | null) => void;
+  disabled?: boolean;
 }
 
-export default function ProductFilter({ empkey, onChange }: Props) {
+export default function ProductFilter({ empkey, onChange, disabled = false }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  // ✅ FIX: ref al botón para calcular posición del dropdown
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  const buttonRef  = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // ✅ FIX: posición calculada para el portal
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 288 });
+  const { isOpen: open, toggle: toggleOpen, dropdownPos } = useDismissableDropdown(buttonRef, dropdownRef);
 
-  useEffect(() => {
-    fetchProducts(empkey).then(setProducts);
-  }, [empkey]);
-
-  // ✅ FIX: calcular posición cuando se abre el dropdown
-  useEffect(() => {
-    if (open && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: Math.max(288, rect.width),
-      });
-    }
-  }, [open]);
-
-  // ✅ FIX: cerrar al hacer click fuera — detectar tanto el botón como el portal
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      const target = e.target as Node;
-      const clickedButton = buttonRef.current?.contains(target);
-      const clickedDropdown = dropdownRef.current?.contains(target);
-      if (!clickedButton && !clickedDropdown) setOpen(false);
-    }
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
-
-  // ✅ FIX: cerrar solo si el scroll ocurre FUERA del dropdown (no dentro de la lista)
-  useEffect(() => {
-    if (!open) return;
-    function onScroll(e: Event) {
-      if (dropdownRef.current?.contains(e.target as Node)) return; // scroll interno → ignorar
-      setOpen(false);
-    }
-    window.addEventListener('scroll', onScroll, true);
-    return () => window.removeEventListener('scroll', onScroll, true);
-  }, [open]);
+  useEffect(() => { fetchProducts(empkey).then(setProducts); }, [empkey]);
 
   function toggle(key: number) {
     setSelected(prev => {
@@ -167,11 +129,12 @@ export default function ProductFilter({ empkey, onChange }: Props) {
         <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Productos:</span>
         <button
           ref={buttonRef}
-          onClick={() => setOpen(v => !v)}
+          onClick={disabled ? undefined : toggleOpen}
+          disabled={disabled}
           aria-expanded={open}
           aria-haspopup="listbox"
-          aria-label={`Seleccionar productos: ${label}`}
-          className="text-xs rounded-lg px-3 py-1.5 flex items-center gap-2 min-w-[160px] text-left transition-all"
+          aria-label={disabled ? 'Filtro de productos deshabilitado' : `Seleccionar productos: ${label}`}
+          className={`text-xs rounded-lg px-3 py-1.5 flex items-center gap-2 min-w-[160px] text-left transition-all${disabled ? ' opacity-50 cursor-not-allowed' : ''}`}
           style={{
             background: open ? 'rgba(96,165,250,0.1)' : 'var(--bg-input)',
             border: `1px solid ${open ? 'rgba(96,165,250,0.4)' : 'var(--border-input)'}`,
@@ -179,7 +142,7 @@ export default function ProductFilter({ empkey, onChange }: Props) {
             outline: 'none',
           }}
         >
-          <span className="truncate flex-1">{label}</span>
+          <span className="truncate flex-1">{disabled ? 'Todos los productos' : label}</span>
           <svg
             className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
             style={{ color: 'var(--text-muted)' }}

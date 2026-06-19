@@ -222,9 +222,9 @@ sudo systemctl reload nginx
 ## Bugs históricos — PM2
 
 ### PM2 crash "DATABASE_URL no configurada"
-- **Síntoma:** `pm2 start dist/index.js` → status `errored`, logs: `FATAL: DATABASE_URL no está configurada`
+- **Síntoma:** `pm2 start dist/main.js` → status `errored`, logs: `FATAL: DATABASE_URL no está configurada`
 - **Causa:** Sin `--cwd`, PM2 usa el home del usuario como working directory. `dotenv.config()` busca `.env` en el CWD, no en el directorio del script.
-- **Solución:** `pm2 start /var/www/pos-dashboard/backend/dist/index.js --name pos-backend --cwd /var/www/pos-dashboard/backend`
+- **Solución:** `pm2 start /var/www/pos-dashboard/backend/dist/main.js --name pos-backend --cwd /var/www/pos-dashboard/backend`
 
 ### PM2 startup generó servicio con `User=--hp`
 - **Síntoma:** `systemctl list-units | grep pm2` retornaba `pm2---hp.service`, servicio no funcional

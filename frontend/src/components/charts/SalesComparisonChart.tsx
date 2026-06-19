@@ -113,12 +113,12 @@ export default function SalesComparisonChart({ empkey, ubicod, products, refDate
               <CartesianGrid strokeDasharray="3 3" stroke={colors.chartGrid} vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'DM Mono, monospace' }}
+                tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'Geist Mono, monospace' }}
                 tickLine={false} axisLine={false}
               />
               <YAxis
                 tickFormatter={formatCLP}
-                tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'DM Mono, monospace' }}
+                tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'Geist Mono, monospace' }}
                 tickLine={false} axisLine={false} width={60}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: colors.cursor }} />

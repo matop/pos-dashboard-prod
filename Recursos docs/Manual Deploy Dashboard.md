@@ -40,11 +40,11 @@ echo "VITE_API_SECRET_KEY=<key>" > frontend/.env.production
 
 ```bash
 cd backend
-npm run build
-# Resultado: backend/dist/ con index.js, db.js, logger.js, middleware/, routes/, utils/
+pnpm run build
+# Resultado: backend/dist/ con main.js, app.module.js, branches/, products/, charts/, common/, database/
 ```
 
-> `tsconfig.json` ya excluye `*.test.ts` y `src/test/**/*` del build de producción.
+> `tsconfig.json` ya excluye `*.spec.ts` del build de producción.
 
 ### 1c. Build del frontend
 
@@ -67,10 +67,10 @@ Conectar a servidor destino con el usuario `dashboardapp`.
 |---|---|
 | `backend/dist/` | `/var/www/pos-dashboard/backend/dist/` |
 | `backend/package.json` | `/var/www/pos-dashboard/backend/package.json` |
-| `backend/package-lock.json` | `/var/www/pos-dashboard/backend/package-lock.json` |
+| `backend/pnpm-lock.yaml` | `/var/www/pos-dashboard/backend/pnpm-lock.yaml` |
 | `frontend/dist/` | `/var/www/pos-dashboard/frontend/dist/` |
 
-> ⚠️ `package.json` y `package-lock.json` son necesarios para `npm install --omit=dev`.
+> ⚠️ `package.json` y `pnpm-lock.yaml` son necesarios para `pnpm install --prod`.
 > Nunca subir `node_modules/`, `.env`, ni código fuente.
 
 ---
@@ -126,7 +126,7 @@ chmod 600 /var/www/pos-dashboard/backend/.env
 
 ```bash
 cd /var/www/pos-dashboard/backend
-sudo -u dashboardapp HOME=/home/dashboardapp npm install --omit=dev
+sudo -u dashboardapp HOME=/home/dashboardapp pnpm install --prod
 ```
 
 ---
@@ -158,7 +158,7 @@ Para que el túnel sobreviva reinicios, ver Paso 8 (systemd service).
 ```bash
 # Primera vez:
 sudo -u dashboardapp HOME=/home/dashboardapp pm2 start \
-  /var/www/pos-dashboard/backend/dist/index.js \
+  /var/www/pos-dashboard/backend/dist/main.js \
   --name pos-backend
 
 # Verificar que arrancó:
@@ -320,5 +320,5 @@ sudo nginx -t && sudo systemctl reload nginx
 | 404 después de WinSCP | PM2/Nginx no se recargaron | Ver sección Redeploy |
 | PM2 startup genera `User=--hp` | Orden de args incorrecto | `-u dashboardapp --hp /home/dashboardapp` (en ese orden) |
 | `pm2 restart` ignora cambios en .env | Variables cacheadas del inicio | Usar `--update-env` siempre |
-| Frontend build falla en servidor | `npm install --omit=dev` excluye vite/tsc | Usar `npm install` completo para builds |
+| Frontend build falla en servidor | `pnpm install --prod` excluye vite/tsc | Construir local y subir solo `dist/` (nunca buildear en servidor) |
 | Nginx elimina header `x-api-key` | Nginx externo no tiene `proxy_set_header` | Agregar `proxy_set_header x-api-key $http_x_api_key` |

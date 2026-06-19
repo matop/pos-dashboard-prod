@@ -62,7 +62,7 @@
   }
 
   *, *::before, *::after { box-sizing: border-box; }
-  html { font-family: 'DM Sans', sans-serif; color-scheme: var(--color-scheme); }
+  html { font-family: 'Inter', sans-serif; color-scheme: var(--color-scheme); }
   body { margin: 0; background-color: var(--bg-page); color: var(--text-bright); -webkit-font-smoothing: antialiased; }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: var(--bg-surface); }
@@ -71,8 +71,8 @@
 }
 
 @layer utilities {
-  .font-display { font-family: 'Fraunces', Georgia, serif; }
-  .font-mono    { font-family: 'DM Mono', monospace; }
+  .font-display { font-family: 'Geist Mono', monospace; }
+  .font-mono    { font-family: 'Geist Mono', monospace; }
 
   .card {
     background: var(--bg-card);
@@ -111,7 +111,7 @@
 
   .filter-pill {
     display: inline-flex; align-items: center;
-    padding: 5px 13px; font-size: 12px; font-family: 'DM Sans', sans-serif;
+    padding: 5px 13px; font-size: 12px; font-family: 'Inter', sans-serif;
     font-weight: 500; border-radius: 8px;
     border: 1px solid rgba(99,179,237,0.18); color: #7fa8cc;
     background: rgba(99,179,237,0.04); cursor: pointer; transition: border-color 0.15s, color 0.15s, background-color 0.15s, box-shadow 0.15s; letter-spacing: 0.01em;
@@ -176,7 +176,7 @@
   border: 1px solid var(--border-card);
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 0 12px rgba(59,130,246,0.08);
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 0.8rem;
   overflow: hidden;
   position: relative;

@@ -13,6 +13,12 @@ export interface ThemeColors {
   activeDotStroke: string;
   barTrack: string;
   cursor: string;
+  // Chart data colors
+  primary: string;
+  primaryLight: string;
+  series: string[];
+  comparison: string[];
+  seriesOther: string;
 }
 
 const DARK_COLORS: ThemeColors = {
@@ -24,6 +30,11 @@ const DARK_COLORS: ThemeColors = {
   activeDotStroke: '#060b18',
   barTrack: 'rgba(255,255,255,0.04)',
   cursor: 'rgba(255,255,255,0.02)',
+  primary: '#3b82f6',
+  primaryLight: '#60a5fa',
+  series: ['#60a5fa', '#2dd4bf', '#fbbf24', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#818cf8'],
+  comparison: ['#3b82f6', 'rgba(96,165,250,0.65)', 'rgba(96,165,250,0.4)', 'rgba(167,139,250,0.55)', 'rgba(167,139,250,0.35)'],
+  seriesOther: '#4b5563',
 };
 
 const LIGHT_COLORS: ThemeColors = {
@@ -35,6 +46,11 @@ const LIGHT_COLORS: ThemeColors = {
   activeDotStroke: '#f0f4f8',
   barTrack: 'rgba(0,0,0,0.06)',
   cursor: 'rgba(0,0,0,0.03)',
+  primary: '#3b82f6',
+  primaryLight: '#60a5fa',
+  series: ['#60a5fa', '#2dd4bf', '#fbbf24', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#818cf8'],
+  comparison: ['#3b82f6', 'rgba(96,165,250,0.65)', 'rgba(96,165,250,0.4)', 'rgba(167,139,250,0.55)', 'rgba(167,139,250,0.35)'],
+  seriesOther: '#4b5563',
 };
 
 interface ThemeContextValue {

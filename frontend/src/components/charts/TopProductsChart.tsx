@@ -1,21 +1,18 @@
-import { useEffect, useMemo, useReducer } from 'react';
+import { useMemo } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip,
   ResponsiveContainer,
 } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
-import { fetchTopProducts, isAbortError } from '../../api/client';
+import { fetchTopProducts } from '../../api/client';
 import type { TopProductPoint } from '../../api/client';
+import { useFetchChartData } from '../../hooks/useFetchChartData';
 import type { TimeRange } from '../filters/TimeRangeFilter';
 import { formatCLP } from '../../utils/format';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const MAX_SLICES = 8;
-const PALETTE = [
-  '#60a5fa', '#2dd4bf', '#fbbf24', '#a78bfa',
-  '#fb7185', '#34d399', '#f97316', '#818cf8',
-];
-const COLOR_OTROS = '#4b5563';
 const COBERTURA_OBJETIVO = 0.80;
 const ANCHO_LABEL_PX = 28;
 
@@ -28,12 +25,12 @@ interface ChartRow {
 }
 
 interface Props {
-  empkey:    string;
-  ubicod:    string | null;
-  timeRange: TimeRange;
-  products:  number[] | null;
-  refDate: string | null; // ← nuevo
-
+  empkey:     string;
+  ubicod:     string | null;
+  timeRange:  TimeRange;
+  products:   number[] | null;
+  refDate:    string | null;
+  refreshKey: number;
 }
 
 // ─── Tooltip ─────────────────────────────────────────────────────────────────
@@ -72,6 +69,7 @@ function getLabelFill(hex: string): string {
 }
 
 function LabelPorcion(props: PieLabelRenderProps) {
+  const { colors } = useTheme();
   const cx          = Number(props.cx          ?? 0);
   const cy          = Number(props.cy          ?? 0);
   const midAngle    = Number(props.midAngle    ?? 0);
@@ -87,7 +85,7 @@ function LabelPorcion(props: PieLabelRenderProps) {
   const radioMedio = innerRadius + (outerRadius - innerRadius) * 0.55;
   const arco       = radioMedio * (percent * 2 * Math.PI);
   const texto      = `${(percent * 100).toFixed(1)}%`;
-  const segmentColor = PALETTE[index % PALETTE.length] ?? COLOR_OTROS;
+  const segmentColor = colors.series[index % colors.series.length] ?? colors.seriesOther;
 
   // ── Label ADENTRO (arco suficientemente grande) ───────────────────────────
   if (arco >= ANCHO_LABEL_PX) {
@@ -99,7 +97,7 @@ function LabelPorcion(props: PieLabelRenderProps) {
         fill={getLabelFill(segmentColor)}
         textAnchor="middle"
         dominantBaseline="central"
-        style={{ fontSize: 11, fontWeight: 700, fontFamily: 'DM Mono, monospace' }}
+        style={{ fontSize: 11, fontWeight: 700, fontFamily: 'Geist Mono, monospace' }}
       >
         {texto}
       </text>
@@ -146,46 +144,24 @@ function LabelPorcion(props: PieLabelRenderProps) {
       />
       <text
         x={xTexto} y={y2}
-        fill={segmentColor === '#4b5563' ? '#94a3b8' : segmentColor}
+        fill={segmentColor === colors.seriesOther ? '#94a3b8' : segmentColor}
         textAnchor={anchorTexto}
         dominantBaseline="central"
-        style={{ fontSize: 10, fontWeight: 600, fontFamily: 'DM Mono, monospace' }}
+        style={{ fontSize: 10, fontWeight: 600, fontFamily: 'Geist Mono, monospace' }}
       >
         {texto}
       </text>
     </g>
   );
 }
-// ─── Reducer ─────────────────────────────────────────────────────────────────
-interface FetchState { raw: TopProductPoint[]; loading: boolean; error: string | null }
-type FetchAction =
-  | { type: 'FETCH_START' }
-  | { type: 'FETCH_SUCCESS'; payload: TopProductPoint[] }
-  | { type: 'FETCH_ERROR'; payload: string };
-
-function fetchReducer(state: FetchState, action: FetchAction): FetchState {
-  switch (action.type) {
-    case 'FETCH_START':   return { ...state, loading: true, error: null };
-    case 'FETCH_SUCCESS': return { raw: action.payload, loading: false, error: null };
-    case 'FETCH_ERROR':   return { ...state, loading: false, error: action.payload };
-  }
-}
-
 // ─── Componente principal ─────────────────────────────────────────────────────
-export default function TopProductsChart({ empkey, ubicod, timeRange, products, refDate }: Props) {
-  const [state, dispatch] = useReducer(fetchReducer, { raw: [], loading: true, error: null });
-  const { raw, loading, error } = state;
-
-  useEffect(() => {
-    const controller = new AbortController();
-    dispatch({ type: 'FETCH_START' });
-    fetchTopProducts({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal: controller.signal })
-      .then(d  => dispatch({ type: 'FETCH_SUCCESS', payload: d }))
-      .catch(e => {
-        if (!isAbortError(e)) dispatch({ type: 'FETCH_ERROR', payload: e.message });
-      });
-    return () => controller.abort();
-  }, [empkey, ubicod, timeRange.from, timeRange.to, products, refDate]);
+export default function TopProductsChart({ empkey, ubicod, timeRange, products, refDate, refreshKey }: Props) {
+  const { colors } = useTheme();
+  const { data: raw, loading, error } = useFetchChartData(
+    (signal) => fetchTopProducts({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal }),
+    [empkey, ubicod, timeRange.from, timeRange.to, products, refDate, refreshKey],
+    [] as TopProductPoint[],
+  );
 
   // ── Agrupación "Otros" (memoized) ─────────────────────────────────────────
   const { totalGeneral, chartData } = useMemo(() => {
@@ -289,7 +265,7 @@ export default function TopProductsChart({ empkey, ubicod, timeRange, products, 
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
-                    fill={entry.esOtros ? COLOR_OTROS : PALETTE[index % PALETTE.length]}
+                    fill={entry.esOtros ? colors.seriesOther : colors.series[index % colors.series.length]}
                     fillOpacity={entry.esOtros ? 0.7 : 1}
                     stroke="transparent"
                   />
@@ -305,7 +281,7 @@ export default function TopProductsChart({ empkey, ubicod, timeRange, products, 
               const pct = totalGeneral > 0
                 ? ((entry.total / totalGeneral) * 100).toFixed(1)
                 : '0.0';
-              const color = entry.esOtros ? COLOR_OTROS : PALETTE[index % PALETTE.length];
+              const color = entry.esOtros ? colors.seriesOther : colors.series[index % colors.series.length];
               return (
                 <div key={index} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">

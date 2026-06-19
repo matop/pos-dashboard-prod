@@ -24,9 +24,9 @@ export default {
         },
       },
       fontFamily: {
-        display: ['Fraunces', 'Georgia', 'serif'],
-        sans:    ['DM Sans', 'sans-serif'],
-        mono:    ['DM Mono', 'monospace'],
+        display: ['Geist Mono', 'monospace'],
+        sans:    ['Inter', 'sans-serif'],
+        mono:    ['Geist Mono', 'monospace'],
       },
       backgroundImage: {
         'dot-grid': 'radial-gradient(circle, rgba(96,165,250,0.08) 1px, transparent 1px)',

@@ -1,41 +1,20 @@
-import { useState, useEffect, useMemo, useReducer } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { fetchSalesHistory, isAbortError } from '../api/client';
+import { fetchSalesHistory } from '../api/client';
 import type { SalesHistoryPoint } from '../api/client';
-
-interface SalesState {
-  data: SalesHistoryPoint[];
-  loading: boolean;
-  error: string | null;
-}
-
-type SalesAction =
-  | { type: 'fetch' }
-  | { type: 'success'; data: SalesHistoryPoint[] }
-  | { type: 'failure'; error: string };
-
-function salesReducer(_state: SalesState, action: SalesAction): SalesState {
-  switch (action.type) {
-    case 'fetch':   return { data: [], loading: true, error: null };
-    case 'success': return { data: action.data, loading: false, error: null };
-    case 'failure': return { data: [], loading: false, error: action.error };
-  }
-}
-import TimeRangeFilter, { type TimeRange } from './filters/TimeRangeFilter';
+import { useFetchChartData } from '../hooks/useFetchChartData';
+import { useFilters } from '../hooks/useFilters';
+import TimeRangeFilter from './filters/TimeRangeFilter';
 import BranchFilter from './filters/BranchFilter';
 import ProductFilter from './filters/ProductFilter';
 import SalesHistoryChart from './charts/SalesHistoryChart';
 import TopProductsChart from './charts/TopProductsChart';
+import TopCategoriesChart from './charts/TopCategoriesChart';
 import SalesComparisonChart from './charts/SalesComparisonChart';
 import KPICards from './KPICards';
-import { dateToKey, parseRefDateString, formatDayKey } from '../utils/dateKeys';
-
-function getDefaultTimeRange(refDate: string | null): TimeRange {
-  const to = refDate ? parseRefDateString(refDate) ?? new Date() : new Date();
-  const from = new Date(to);
-  from.setDate(to.getDate() - 29);
-  return { from: dateToKey(from), to: dateToKey(to) };
-}
+import { useAppParams } from '../hooks/useAppParams';
+import { formatDayKey } from '../utils/dateKeys';
+import type { TimeRange } from './filters/TimeRangeFilter';
 
 interface Props {
   empkey: string;
@@ -68,43 +47,26 @@ function Clock() {
 
 export default function Dashboard({ empkey, initialUbicod, refDate }: Props) {
   const { theme, toggle: toggleTheme } = useTheme();
-  const [ubicod, setUbicod] = useState<string | null>(initialUbicod);
-  const [branchName, setBranchName] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRange>(() => getDefaultTimeRange(refDate));
-  const [timeRangeLabel, setTimeRangeLabel] = useState<string | null>('Últimos 30 días');
-  const [products, setProducts] = useState<number[] | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(() =>
-    localStorage.getItem('pos-filters-open') !== 'false'
-  );
+  const {
+    filters,
+    refreshKey,
+    setUbicod,
+    setBranchName,
+    setTimeRange,
+    setProducts,
+    toggleFilters,
+    activeFilterCount,
+    refresh,
+  } = useFilters(initialUbicod, refDate);
+  const { topMode } = useAppParams(empkey);
+  const { ubicod, branchName, timeRange, timeRangeLabel, products, filtersOpen } = filters;
 
   // ── Shared sales history fetch (used by KPICards + SalesHistoryChart) ─────
-  const [sales, dispatchSales] = useReducer(salesReducer, { data: [], loading: true, error: null });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    dispatchSales({ type: 'fetch' });
-    fetchSalesHistory({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal: controller.signal })
-      .then(d => dispatchSales({ type: 'success', data: d }))
-      .catch(e => {
-        if (!isAbortError(e)) dispatchSales({ type: 'failure', error: e.message });
-      });
-    return () => controller.abort();
-  }, [empkey, ubicod, timeRange.from, timeRange.to, products, refDate, refreshKey]);
-
-  const defaultRange = useMemo(() => getDefaultTimeRange(refDate), [refDate]);
-  const activeFilterCount = useMemo(() => [
-    ubicod !== null,
-    products !== null,
-    timeRange.from !== defaultRange.from || timeRange.to !== defaultRange.to,
-  ].filter(Boolean).length, [ubicod, products, timeRange, defaultRange]);
-
-  const refresh = () => setRefreshKey(k => k + 1);
-  const toggleFilters = () => setFiltersOpen(v => {
-    const next = !v;
-    localStorage.setItem('pos-filters-open', String(next));
-    return next;
-  });
+  const { data: salesData, loading: salesLoading, error: salesError } = useFetchChartData(
+    (signal) => fetchSalesHistory({ empkey, ubicod, from: timeRange.from, to: timeRange.to, products, refDate, signal }),
+    [empkey, ubicod, timeRange.from, timeRange.to, products, refDate, refreshKey],
+    [] as SalesHistoryPoint[],
+  );
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }}>
@@ -252,9 +214,9 @@ export default function Dashboard({ empkey, initialUbicod, refDate }: Props) {
           <div className="max-w-7xl mx-auto px-6 py-3 flex flex-wrap items-center gap-3">
             <BranchFilter empkey={empkey} initialUbicod={initialUbicod} onBranchChange={(u, n) => { setUbicod(u); setBranchName(n); }} />
             <div className="w-px h-4" style={{ background: 'var(--border-divider)' }} />
-            <TimeRangeFilter value={timeRange} onChange={(r, label) => { setTimeRange(r); setTimeRangeLabel(label); }} refDate={refDate}/>
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange} refDate={refDate} />
             <div className="w-px h-4" style={{ background: 'var(--border-divider)' }} />
-            <ProductFilter empkey={empkey} onChange={setProducts} />
+            <ProductFilter empkey={empkey} onChange={setProducts} disabled={topMode === '2'} />
           </div>
         </div>
 
@@ -271,21 +233,38 @@ export default function Dashboard({ empkey, initialUbicod, refDate }: Props) {
 
         {/* KPI Cards */}
         <div className="animate-fade-up">
-          <KPICards data={sales.data} loading={sales.loading} />
+          <KPICards data={salesData} loading={salesLoading} />
         </div>
 
         {/* Sales History */}
         <div className="animate-fade-up animation-delay-100">
-          <SalesHistoryChart data={sales.data} loading={sales.loading} error={sales.error} />
+          <SalesHistoryChart data={salesData} loading={salesLoading} error={salesError} />
         </div>
 
         {/* Bottom row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="animate-fade-up animation-delay-200">
-            <TopProductsChart key={refreshKey} empkey={empkey} ubicod={ubicod} timeRange={timeRange} products={products} refDate={refDate} />
+            {topMode === '2' ? (
+              <TopCategoriesChart
+                empkey={empkey}
+                ubicod={ubicod ?? ''}
+                timeRange={timeRange}
+                refDate={refDate ?? ''}
+                refreshKey={refreshKey}
+              />
+            ) : (
+              <TopProductsChart
+                empkey={empkey}
+                ubicod={ubicod}
+                timeRange={timeRange}
+                products={products}
+                refDate={refDate}
+                refreshKey={refreshKey}
+              />
+            )}
           </div>
           <div className="animate-fade-up animation-delay-300">
-            <SalesComparisonChart key={refreshKey} empkey={empkey} ubicod={ubicod} products={products} refDate={refDate} />
+            <SalesComparisonChart empkey={empkey} ubicod={ubicod} products={products} refDate={refDate} refreshKey={refreshKey} />
           </div>
         </div>
       </main>

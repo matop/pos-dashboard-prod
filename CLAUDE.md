@@ -4,32 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A full-stack POS (Point of Sale) analytics dashboard. The backend is an Express.js API serving data from PostgreSQL; the frontend is a React + Vite SPA displaying sales charts and KPIs. Each lives in its own subdirectory with separate `package.json` and `tsconfig.json`.
+A full-stack POS (Point of Sale) analytics dashboard. The backend is a NestJS API serving data from PostgreSQL; the frontend is a React + Vite SPA displaying sales charts and KPIs. Each lives in its own subdirectory with separate `package.json` and `tsconfig.json`.
+
+**Both backend and frontend use pnpm.**
 
 ## Development Commands
 
 ### Backend (`/backend`)
 ```bash
 cd backend
-npm install
-npm run dev        # tsx watch mode (hot reload)
-npm run build      # tsc → dist/
-npm start          # tsx src/index.ts (no watch)
+pnpm install
+pnpm run dev       # ts-node watch mode (hot reload)
+pnpm run build     # tsc → dist/
+pnpm start         # node dist/main.js (no watch)
+pnpm test          # Jest + Supertest (106 tests)
+pnpm run test:watch
 ```
 
 ### Frontend (`/frontend`)
 ```bash
 cd frontend
-npm install
-npm run dev        # Vite dev server at localhost:5173
-npm run build      # tsc -b && vite build → dist/
-npm run lint       # ESLint (flat config)
-npm run preview    # Preview production build
+pnpm install
+pnpm run dev        # Vite dev server at localhost:5173
+pnpm run build      # tsc -b && vite build → dist/
+pnpm run lint       # ESLint (flat config)
+pnpm run preview
 ```
+
+> If `pnpm run build` fails with `ERR_PNPM_IGNORED_BUILDS`: run `pnpm approve-builds --all` first (one-time per machine).
 
 ### Production Deploy
 ```bash
 bash deploy.sh     # Builds both, restarts pm2 (pos-backend), reloads Nginx
+# Note: deploy.sh line 21 uses npm for frontend — run manually with pnpm instead
 ```
 
 ## Environment Variables
@@ -41,6 +48,8 @@ NODE_ENV=development
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 FRONTEND_URL=localhost:5173        # used for CORS origin
 API_SECRET_KEY=<hex string>
+PARAMS_SIDECAR_URL=http://localhost:3002
+PARAMS_APP_ID=ServidorPOS          # empty string disables sidecar call (safe fallback)
 ```
 
 **`/frontend/.env`**
@@ -48,7 +57,9 @@ API_SECRET_KEY=<hex string>
 VITE_API_SECRET_KEY=<same hex string as backend API_SECRET_KEY>
 ```
 
-The Vite dev server proxies `/api` → `http://localhost:3001`, so no CORS issues during local development.
+`VITE_API_SECRET_KEY` is baked at build time — verify `.env.production` before building for deployment.
+
+The Vite dev server proxies `/api` → `http://localhost:3001`.
 
 ## Architecture
 
@@ -56,35 +67,55 @@ The Vite dev server proxies `/api` → `http://localhost:3001`, so no CORS issue
 ```
 Browser URL (?empkey=X&ubicod=Y)
   → App.tsx (parses URL params)
-    → Dashboard.tsx (owns all filter state)
+    → Dashboard.tsx (owns all filter state via useFilters hook)
       → api/client.ts (attaches x-api-key header, builds query params)
-        → Backend Express (Helmet → CORS → Rate Limit → Auth → Validate → Route)
-          → PostgreSQL (parameterized queries)
+        → Backend NestJS (Helmet → CORS → ThrottlerModule → ApiKeyGuard → ValidationPipe → Controller)
+          → PostgreSQL (TypeORM raw queries via QueryBuilder utility)
 ```
 
 ### Backend Structure
 
-- `src/index.ts` — app bootstrap, middleware stack, route mounting
-- `src/db.ts` — single `pg.Pool` instance (max 20 conns, SSL in prod)
-- `src/middleware/auth.ts` — validates `x-api-key` header against `API_SECRET_KEY`
-- `src/middleware/validate.ts` — validates `empkey`, date format (YYYYMMDD), product key lists
-- `src/routes/` — one file per endpoint; all query `empkey` to scope data per enterprise
+- `src/main.ts` — app bootstrap; nest-winston, Helmet, CORS, ThrottlerModule global, ValidationPipe, shutdown hooks
+- `src/app.module.ts` — root module; imports DatabaseModule, BranchesModule, ProductsModule, ChartsModule, ParamsModule
+- `src/database/` — TypeORM DataSource (single connection pool, SSL in prod via `DB_SSL=true`)
+- `src/common/guards/api-key.guard.ts` — validates `x-api-key` header on all routes
+- `src/common/interceptors/chart-cache.interceptor.ts` — in-memory cache (60s TTL) keyed by full URL; applied at controller level
+- `src/common/pipes/parse-empkey.pipe.ts` — validates and parses `empkey` query param
+- `src/common/utils/query-builder.ts` — `QueryBuilder` class; auto-numbers `$?` placeholders (see PostgreSQL rules below)
+- `src/branches/` — `BranchesModule`: controller + service for `GET /api/branches`
+- `src/products/` — `ProductsModule`: controller + service for `GET /api/products`
+- `src/charts/` — `ChartsModule`: controller + 4 services (SalesHistory, TopProducts, TopCategories, SalesComparison)
+- `src/params/` — `ParamsModule`: controller + service for `GET /api/params`; calls GeneXus sidecar on `:3002`, 5 min cache, silent fallback to `'1'`
+- `src/health.controller.ts` — `GET /api/health`
 
 **API Endpoints:**
 - `GET /api/branches?empkey=X`
 - `GET /api/products?empkey=X`
-- `GET /api/charts/sales-history?empkey=X&ubicod=Y&startDate=&endDate=&products=`
-- `GET /api/charts/top-products?empkey=X&ubicod=Y&startDate=&endDate=`
-- `GET /api/charts/sales-comparison?empkey=X&ubicod=Y&startDate=&endDate=`
+- `GET /api/params?empkey=X`
+- `GET /api/charts/sales-history?empkey=X&ubicod=Y&from=YYYYMMDD&to=YYYYMMDD&refDate=YYYYMMDD&products=`
+- `GET /api/charts/top-products?empkey=X&ubicod=Y&from=YYYYMMDD&to=YYYYMMDD&products=`
+- `GET /api/charts/top-categories?empkey=X&ubicod=Y&from=YYYYMMDD&to=YYYYMMDD`
+- `GET /api/charts/sales-comparison?empkey=X&ubicod=Y&refDate=YYYYMMDD&products=`
 
 ### Frontend Structure
 
 - `App.tsx` — reads `?empkey` and `?ubicod` URL params; shows error if `empkey` missing
-- `Dashboard.tsx` — central state hub (`ubicod`, `timeRange`, `products`, `filtersOpen`, `now`)
-- `api/client.ts` — typed fetch helpers; all types (`Branch`, `Product`, `SalesHistoryPoint`, etc.) defined here
-- `context/ThemeContext.tsx` — `ThemeProvider` + `useTheme` hook; persists to `localStorage`; updates CSS custom properties on toggle
+- `Dashboard.tsx` — layout component; delegates all filter state to `useFilters`
+- `api/client.ts` — typed fetch helpers; all shared types defined here (`Branch`, `Product`, `SalesHistoryPoint`, `TopCategoryPoint`, etc.)
+- `context/ThemeContext.tsx` — `ThemeProvider` + `useTheme` hook; persists to `localStorage`; sets CSS custom properties on toggle
+- `hooks/useFilters.ts` — all filter state (`ubicod`, `branchName`, `timeRange`/`timeRangeLabel`, `products`, `filtersOpen`, `refreshKey`); exposes `{ filters, refreshKey, setUbicod, setBranchName, setTimeRange, setProducts, toggleFilters, activeFilterCount, refresh }`
+- `hooks/useFetchChartData.ts` — generic data fetching hook; takes `fetchFn`, `deps[]`, `initialData`
+- `hooks/useAppParams.ts` — fetches `GET /api/params` once on mount; returns `{ topMode: '1' | '2' }`; silent fallback
+- `hooks/useDismissableDropdown.ts` — click-outside handler for dropdowns
+- `utils/dateKeys.ts` — date ↔ YYYYMMDD integer key conversions
+- `utils/format.ts` — number/currency formatting helpers
 - `components/charts/` — Recharts wrappers; receive theme colors from `useTheme`
-- `components/filters/` — controlled inputs that call Dashboard state setters
+  - `TopProductsChart` and `SalesComparisonChart` accept `refreshKey: number` in deps (not as `key=`)
+  - `TopCategoriesChart` — shown when `topMode === '2'`; no `products` prop
+- `components/filters/` — controlled inputs calling Dashboard state setters
+  - `ProductFilter` accepts `disabled?: boolean` (disabled in `topMode === '2'`)
+- `components/KPICards.tsx` — KPI summary cards
+- `components/ErrorBoundary.tsx` — catches render errors
 
 ### Styling System
 
@@ -95,8 +126,8 @@ Browser URL (?empkey=X&ubicod=Y)
 
 ### Key Patterns
 
-- **No React Router** — a single page; branch navigation is purely filter state
-- **No global state library** — React `useState` in Dashboard; `ThemeContext` for theme only
+- **No React Router** — single page; branch navigation is purely filter state
+- **No global state library** — React `useState` via `useFilters`; `ThemeContext` for theme only
 - **empkey scoping** — every backend query filters by `empkey` (enterprise ID) for multi-tenant isolation
 - **TypeScript strict mode** — both backend and frontend; `noUnusedLocals` and `noUnusedParameters` enforced in frontend
 
@@ -105,23 +136,31 @@ Browser URL (?empkey=X&ubicod=Y)
 ### Backend (`/backend`)
 ```bash
 cd backend
-npm test           # vitest run (21 tests)
-npm run test:watch # vitest watch mode
+pnpm test           # Jest + Supertest — 106 tests
+pnpm run test:watch
 ```
 
-- Tests use **Vitest + Supertest** — `src/routes/salesComparison.test.ts`, `src/utils/dateUtils.test.ts`
-- Setup in `src/test/setup.ts` — mocks `pool`, `logger`, and `cacheMiddleware`
-- `index.ts` exports `{ app }` and skips `listen()` when `NODE_ENV=test`
+- Spec files live alongside source: `src/branches/*.spec.ts`, `src/products/*.spec.ts`, `src/charts/*.spec.ts`, `src/params/*.spec.ts`, `src/common/utils/*.spec.ts`
+- `ChartCacheInterceptor` must be a real provider in tests (not mocked); use unique `empkey` per test to avoid cache hits
+- When adding a provider to `ChartsController`, all 4 spec files in `src/charts/` must be updated
 - **ALWAYS run `/test` before delivering backend changes**
 
 ## PostgreSQL Query Rules (CRITICAL)
 
-When writing `pool.query(sql, params)` in backend routes:
+All backend services use `QueryBuilder` (`src/common/utils/query-builder.ts`) for parameterized queries:
 
-1. **No orphan params** — every `params.push(x)` MUST have a corresponding `$N` in the SQL. PostgreSQL rejects unreferenced params.
-2. **No `ANY($N::type[])` with array params** — use `IN ($a, $b, $c)` with individual params instead. See node-postgres FAQ.
-3. **Conditional params** — if a param is only pushed conditionally (e.g., `currentHour` only when `needsHourFilter`), the SQL reference must also be conditional.
-4. **Run `/validate-query`** after modifying any route file.
+```typescript
+const qb = new QueryBuilder(empkey);           // seeds $1 = empkey
+qb.addIf(!!ubicod, 'r.ubicod = $?', ubicod);  // $? → auto-numbered $N
+qb.addIn('r.productId', productIds);           // expands to IN ($2, $3, ...)
+const { where, params } = qb.build();
+```
+
+Rules still enforced even with `QueryBuilder`:
+1. **No orphan params** — every pushed value must have a corresponding `$N`.
+2. **No `ANY($N::type[])`** — use `addIn()` which generates individual `$N` params.
+3. **Conditional params** — use `addIf()` instead of pushing conditionally by hand.
+4. **Run `/validate-query`** after modifying any service file.
 
 ## Skills & Quality Workflow
 
@@ -137,7 +176,7 @@ When writing `pool.query(sql, params)` in backend routes:
 - **`frontend-design`** — when creating or modifying UI components in `components/charts/` or `components/filters/`. This project uses an **ocean theme** with custom Tailwind palette, CSS custom properties for dark/light, Fraunces + DM Sans fonts.
 - **`web-design-guidelines`** — when modifying CSS in `index.css` or any component with user interaction. Check: `:focus-visible` (not `:focus`), `touch-action: manipulation`, `aria-label`, `prefers-reduced-motion`.
 - **`vercel-react-best-practices`** — when modifying Dashboard.tsx, chart components, or data fetching logic. Check: `useMemo`/`useCallback` usage, unnecessary re-renders, fetch waterfalls.
-- **`context7`** (MCP) — when using external libraries (pg, express, recharts, react-datepicker). ALWAYS verify API usage against current docs before implementing.
+- **`context7`** (MCP) — when using external libraries (typeorm, nestjs, recharts, react-datepicker). ALWAYS verify API usage against current docs before implementing.
 
 <!-- autoskills:start -->
 

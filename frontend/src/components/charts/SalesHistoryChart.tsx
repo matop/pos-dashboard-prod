@@ -17,7 +17,7 @@ const CustomizedAxisTick = (...args: any[]) => {
         textAnchor="end"
         fill={colors.chartAxis}
         transform="rotate(-30)"
-        style={{ fontSize: 10, fontFamily: 'DM Mono, monospace' }}
+        style={{ fontSize: 10, fontFamily: 'Geist Mono, monospace' }}
       >
         {formatDayKey(payload.value)}
       </text>
@@ -128,9 +128,9 @@ export default function SalesHistoryChart({ data, loading, error }: Props) {
           <AreaChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 15 }}>
             <defs>
               <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                <stop offset="60%" stopColor="#3b82f6" stopOpacity={0.05} />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="0%" stopColor={colors.primary} stopOpacity={0.3} />
+                <stop offset="60%" stopColor={colors.primary} stopOpacity={0.05} />
+                <stop offset="100%" stopColor={colors.primary} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={colors.chartGrid} vertical={false} />
@@ -144,15 +144,15 @@ export default function SalesHistoryChart({ data, loading, error }: Props) {
             />
             <YAxis
               tickFormatter={formatCLP}
-              tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'DM Mono, monospace' }}
+              tick={{ fontSize: colors.chartAxisSize, fill: colors.chartAxis, fontFamily: 'Geist Mono, monospace' }}
               tickLine={false} axisLine={false} width={70}
             />
             <Tooltip content={<CustomTooltip />} />
             <Area
               type="monotone" dataKey="total"
-              stroke="#3b82f6" strokeWidth={2}
+              stroke={colors.primary} strokeWidth={2}
               fill="url(#blueGrad)" dot={false}
-              activeDot={{ r: 4, fill: '#60a5fa', stroke: colors.activeDotStroke, strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: colors.primaryLight, stroke: colors.activeDotStroke, strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
